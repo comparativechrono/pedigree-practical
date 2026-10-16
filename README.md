@@ -179,14 +179,20 @@ Examples: `data-auto="ped:open id=okafor"`, `data-auto="iv:done iv=mensah"`, `da
 **Short answer, checked automatically:**
 
 ```html
-<div class="q" data-q="i-cf-baby" data-accept="\b1\s*(/|in)\s*150\b||\b2\s*/\s*300\b" data-hint="multiply the three chances">
+<div class="q" data-q="y-ok-proband" data-accept="chidi" data-hint="look for the arrow">
+  <div class="q-text">What is the name of the proband?</div>
+  <div class="q-model"><p><b>Chidi</b>, aged 7: the arrow is at the lower left of his symbol.</p></div>
+</div>
+
+<div class="q" data-q="i-cf-baby" data-prob="1/150" data-hint="multiply the three chances">
   <div class="q-text">What is the chance that David and Lisa's baby has cystic fibrosis?</div>
   <div class="q-model"><p>2/3 × 1/25 × 1/4 = <b>1 in 150</b>.</p></div>
 </div>
 ```
 
 - `data-q` is a unique id. Answers are saved under it, so don't change it once students have started.
-- `data-accept` holds one or more regular expressions separated by `||`, tested without regard to case (the answer is lower-cased and its spaces tidied first). When one matches, **Check** says the answer is right; when none does, it shows `data-hint`. For numbers, anchor the pattern (`^…$` or `\b`) so that `1/4` is not also accepted inside `1/40`.
+- `data-accept` holds one or more regular expressions separated by `||`, tested without regard to case (the answer is lower-cased, its spaces tidied and any full stop at the end removed). When one matches, **Check** says the answer is right; when none does, it shows `data-hint`.
+- For a chance, use **`data-prob="1/150"`** instead. The answer is right if the first or the last chance in it is within 3% of that value, however it is written: `1/150`, `1 in 150`, `2/300`, `0.0067`, `0.67%`, or a worked answer such as `2/3 × 1/25 × 1/4 = 1/150`. Words work too (`one in four`, `a quarter`, `half`, `two thirds`).
 - Without `data-accept` the question takes free text. It counts as done once the student writes something.
 - `.q-model` is the model answer, revealed with **Show answer** (see `showModelAnswers` below). It can be left out.
 
@@ -408,11 +414,16 @@ There are no build tools, frameworks, trackers or scripts from other sites. Ever
 ## Notes for teaching staff
 
 - **Model answers** are part of the page, so students can read them in the page source. Switch *Show answer* off in `config.js` if that matters for how you use the practical.
-- **Where the practical differs from the slides:**
+- **Where the practical differs from the workshop and lecture slides:**
   - *CVS.* The lecture gives a 1–2% chance of miscarriage after CVS. Current NHS information gives less than 1 in 200 for most pregnancies, and the practical says so (noting the older figure).
+  - *Partners.* The workshop teaches men on the left and women on the right. The practical says that this is the traditional convention and that the 2022 NSGC update (Resta *et al.* 2022, “Both sides now”) leaves the order to whoever draws the pedigree.
+  - *Presymptomatic carriers.* Sally, Martha and Sienna carry the variant for a dominant condition but have no symptoms. Like the lecture, the pedigrees mark them with a dot (Pedigree Studio cannot draw anything else); the symbols table explains that the formal NSGC symbol is a vertical line.
+  - *Scenario 1.* The short no-children line under Alice on the slide is not drawn: Pedigree Studio hangs that symbol from a couple, and Alice has no partner in the pedigree.
   - *Scenario 3.* The slide has proband arrows at both Sally and Emma; the practical's pedigree has one, at Sally, and Emma's question is in the text. Sean is drawn as a boy (the slides show a circle). The short mark across Helen's line of descent on the slides is not explained there, so it is not reproduced.
   - *Scenario 5.* The pedigree is drawn as the hearing team would see it, as on the slide, without the family's Alzheimer's disease; the question reminds students what they know from scenario 3.
-  - *Brothers and sisters* are drawn oldest to youngest, which in a few places changes the order from the slides.
+  - *BRCA2 scenario.* Adam's sisters are 35 and 33 (on the slide, 35 and 30), so that the brothers and sisters can be drawn oldest to youngest with Adam next to Jane. Jane's brother is not shaded (his grey shading on the slide is not explained).
+  - *Brothers and sisters* are drawn oldest to youngest throughout, which in a few places changes the order from the slides.
+- **Marking.** Answers that are chances (1/4, 2/3, 1/150 …) are checked by value, so “1 in 4”, “25%”, “0.25”, “a quarter” and a worked answer ending “= 1/4” are all accepted. Other short answers use the patterns in `data-accept`. A short answer is a check for the student, not a grade: read the free-text answers in the download.
 - **The interviews** replace the workshop's paired role-play for students working on their own. If the practical runs alongside the workshop, students can do the interviews in pairs, one asking and one drawing, and then swap for the second interview.
 - **Timing:** about three hours in all (see the table above). Chapters 3 to 5 can be set separately.
 
@@ -424,4 +435,4 @@ The staff notes, if you write any, should be kept separately. **Do not add the s
 
 - **Drawing tool:** [Pedigree Studio](https://github.com/comparativechrono/PedigreeStudio) by Timothy J Hearn, MIT licence (`studio/LICENSE`). DOI: [10.5281/zenodo.20209376](https://doi.org/10.5281/zenodo.20209376).
 - **Tutorial content:** adapted from two sessions of *GM1B Introduction to Human Genetics and Genomics*: the *Genomics Workshop: Taking and Drawing a Family Tree* by Madelaine Corcoran and Jaskiran Gill (Addenbrooke's Clinical Genetics Department), and the lecture *‘Ethics’, legal and governance issues in genetics and genomics* by Dr Tim Hearn. The interviews, the Okafor family and families A to D were written for this practical.
-- **Sources cited in the page:** Bennett RL *et al.* (2008) *J Genet Couns* 17: 424–433 and (2022) *J Genet Couns* 31: 1238–1248 (pedigree nomenclature); *J Med Genet* 2009; 46: 425–430 (*SPRED1*); Wu J & Morris JK (2013) *Eur J Hum Genet* 21: 1016–1019 (Down syndrome prevalence); *ABC v St George's Healthcare NHS Trust* [2020] EWHC 455 (QB); NHS information on chorionic villus sampling; the Cystic Fibrosis Trust; the Genomics Education Programme's *Taking and drawing a family history*.
+- **Sources cited in the page:** Bennett RL *et al.* (2008) *J Genet Couns* 17: 424–433 and (2022) *J Genet Couns* 31: 1238–1248 (pedigree nomenclature); Pasmant E *et al.* (2009) *J Med Genet* 46: 425–430 and Brems H *et al.* (2007) *Nat Genet* 39: 1120–1126 (*SPRED1*); Wu J & Morris JK (2013) *Eur J Hum Genet* 21: 1016–1019 (Down syndrome prevalence); *ABC v St George's Healthcare NHS Trust* [2020] EWHC 455 (QB); NHS information on chorionic villus sampling; the Cystic Fibrosis Trust; NHS England's Genomics Education Programme, *Taking and drawing a family history*; NICE NG151 (aspirin in Lynch syndrome); Resta RG *et al.* (2022) “Both sides now”, *J Genet Couns* (partner order).

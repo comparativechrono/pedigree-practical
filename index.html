@@ -123,7 +123,7 @@
   <div class="q" data-q="w-referral" data-type="mcq">
     <div class="q-text">Which of these family histories most strongly suggests an inherited cause?</div>
     <div class="mcq">
-      <label data-why="Prostate cancer at this age is common, so two cases in elderly brothers is not unusual."><input type="radio"> A man of 84 whose brother had prostate cancer at 80</label>
+      <label data-why="Prostate cancer at this age is common, so two cases in elderly brothers is not unusual."><input type="radio"> A man of 84 with prostate cancer, whose brother had prostate cancer at 80</label>
       <label data-correct data-why="Two close relatives with the same cancer, both much younger than usual: two of the workshop's warning signs together."><input type="radio"> A woman whose mother and sister both had bowel cancer in their thirties</label>
       <label data-why="Type 2 diabetes in later life is common and mostly not due to a single gene."><input type="radio"> A woman whose grandmother had type 2 diabetes at 70</label>
       <label data-why="A heart attack at 75 after many years of smoking has an obvious cause and is not unusual."><input type="radio"> A man whose father, a lifelong smoker, had a heart attack at 75</label>
@@ -150,8 +150,8 @@
   <h2 id="sym-start">Starting points</h2>
   <ul>
     <li><b>Start with the person in front of you</b> (the proband) and build up and out from them.</li>
-    <li><b>Men are squares and women are circles.</b> Since the 2022 update the symbol shows the person's gender identity. A transgender man is a square and a transgender woman is a circle, with their sex assigned at birth written underneath (AFAB or AMAB) when it is relevant. A diamond is used for a non-binary person, or when sex is not known.</li>
-    <li><b>In a couple, the man goes on the left and the woman on the right</b> where that is possible.</li>
+    <li><b>Men are squares and women are circles.</b> Since the 2022 update the symbol shows the person's gender identity. A transgender man is a square and a transgender woman is a circle, with their sex assigned at birth written underneath (AFAB, AMAB, or UAAB if unassigned at birth) when it is relevant. A diamond is used for a non-binary person, or when sex is not known.</li>
+    <li><b>In a couple, the man is traditionally drawn on the left and the woman on the right</b>, as the workshop teaches. The 2022 update no longer requires this, because the symbols now show gender identity, so either order is acceptable: choose whichever keeps the pedigree clear.</li>
     <li><b>Brothers and sisters go from oldest on the left to youngest on the right.</b></li>
     <li><b>Affected people are shaded.</b> If more than one condition runs in the family, use different colours or shade quarters of the symbol, and add a key.</li>
   </ul>
@@ -226,7 +226,7 @@
       <label data-why="Brothers born at different times each have their own line from the sibship line."><input type="radio"> They are brothers born a year apart</label>
     </div>
   </div>
-  <div class="q" data-q="y-ok-pregs" data-accept="^\s*(4|four)\b" data-hint="count every pregnancy, including the one that is ongoing – and think about the twins">
+  <div class="q" data-q="y-ok-pregs" data-accept="(^|[^\d.])4([^\d.]|$)||\bfour\b" data-hint="count every pregnancy, including the one that is ongoing – and think about the twins">
     <div class="q-text">How many pregnancies has Amaka had, including the current one?</div>
     <div class="q-model"><p><b>Four</b>: Ada; the miscarriage in 2016; the twins Chidi and Dubem, who were one pregnancy; and the current pregnancy of 16 weeks.</p></div>
   </div>
@@ -238,7 +238,7 @@
       <label data-why="Being affected is shown by shading, not by a number."><input type="radio"> A man affected with a third condition</label>
     </div>
   </div>
-  <div class="q" data-q="y-ok-double" data-accept="cousin" data-hint="look at who Obi's and Amaka's parents are, and how those parents are related">
+  <div class="q" data-q="y-ok-double" data-accept="^(?!.*\b(second|third|2nd|3rd|removed|half)\b).*\bcousins?\b" data-hint="look at who Obi's and Amaka's parents are, and how those parents are related">
     <div class="q-text">Obi and Amaka are joined by a double line. How are they related to each other?</div>
     <div class="q-model"><p>They are <b>first cousins</b>. Obi's father Emeka and Amaka's mother Grace are brother and sister, children of Nnamdi and Adanna. The double line shows that the partners are related by blood (consanguinity).</p></div>
   </div>
@@ -248,7 +248,7 @@
   </div>
   <div class="q" data-q="y-ok-inherited">
     <div class="q-text">Which features of this pedigree suggest that Chidi's hearing loss could be inherited, and how?</div>
-    <div class="q-model"><p>Chidi's parents are not affected but they are first cousins, and the condition has appeared in a child of theirs. Related parents are more likely to carry the same recessive variant, inherited from a shared ancestor, so this points towards <b>autosomal recessive</b> inheritance (in hearing loss, often variants in <i>GJB2</i>). Note that Dubem being affected adds little: identical twins share the same genome, so they count once, not twice. Chapter 4 looks at patterns like this.</p></div>
+    <div class="q-model"><p>Chidi's parents are not affected but they are first cousins, and the condition has appeared in a child of theirs. Related parents are more likely to carry the same recessive variant, inherited from a shared ancestor, so this points towards <b>autosomal recessive</b> inheritance. Most inherited hearing loss that is present from birth is recessive, and many different genes can be involved. Note that Dubem being affected adds little: identical twins share the same genome, so they count once, not twice. Chapter 4 looks at patterns like this.</p></div>
   </div>
   <div class="q" data-q="y-order">
     <div class="q-text">Why do you think the convention is to draw brothers and sisters from oldest on the left to youngest on the right?</div>
@@ -314,7 +314,7 @@
     <div class="q-text">Which features of Abena's family history are warning signs of an inherited heart condition?</div>
     <div class="q-model"><p>Kofi's <b>sudden death at 28</b> during exercise, with <b>hypertrophic cardiomyopathy at post-mortem</b> and a <b>variant in <i>MYBPC3</i></b>; her father now has the same condition; her grandfather Yaw <b>died suddenly at 45</b>; and her aunt Adwoa has a pacemaker for a reason the family does not know. Sudden cardiac death in a young person who seemed healthy is one of the workshop's warning signs on its own.</p></div>
   </div>
-  <div class="q" data-q="h-mensah-pattern" data-accept="dominant" data-hint="the condition is in several generations, and a father and son are both affected">
+  <div class="q" data-q="h-mensah-pattern" data-accept="^(?!.*\bx[\s-]?linked\b).*\bdominant\b||^ad\b||\bautosomal dominant\b" data-hint="the condition is in several generations, and a father and son are both affected">
     <div class="q-text">Which pattern of inheritance does this family suggest?</div>
     <div class="q-model"><p><b>Autosomal dominant</b>: affected people in more than one generation (Kofi and his father, and probably his grandfather), with transmission from father to son, which rules out X-linked inheritance. Hypertrophic cardiomyopathy is usually autosomal dominant, and <i>MYBPC3</i> is the gene most often involved.</p></div>
   </div>
@@ -379,11 +379,11 @@
       <li data-task="i-ar-unaff" data-check="inherit.cross:ar,1,1,unaffected">Now tick <b>We already know this child is unaffected</b>. <button class="do showme" type="button" data-inherit="ar 1 1 unaffected">show me</button></li>
     </ol>
   </div>
-  <div class="q" data-q="i-ar-quarter" data-accept="^\s*(1\s*(/|in)\s*4|25\s*%?|0?\.25|one in four|a quarter)\s*$" data-hint="give it as a fraction, such as 1/2">
+  <div class="q" data-q="i-ar-quarter" data-prob="1/4" data-hint="give it as a fraction, such as 1/3">
     <div class="q-text">Two carriers have a child. What is the chance that the child is affected?</div>
     <div class="q-model"><p><b>1 in 4</b> (25%) for each pregnancy. The chance that the child is a carrier is 1 in 2, and the chance of being neither is 1 in 4.</p></div>
   </div>
-  <div class="q" data-q="i-ar-twothirds" data-accept="^\s*(2\s*/\s*3|2 in 3|two in three|two.thirds|0?\.66?7?|66\.?\d*\s*%|67\s*%)\s*$" data-hint="once you know the child is unaffected, one of the four outcomes is ruled out">
+  <div class="q" data-q="i-ar-twothirds" data-prob="2/3" data-hint="once you know the child is unaffected, one of the four outcomes is ruled out">
     <div class="q-text">Amelia has cystic fibrosis. Her brother David is not affected. What is the chance that David is a carrier?</div>
     <div class="q-model"><p><b>2 in 3</b>, not 1 in 2. Of the four equally likely outcomes, the affected one is ruled out because David is unaffected. Two of the three that remain are carriers. This assumes, as the workshop says, that the condition is fully penetrant and David would have shown symptoms if he were affected.</p></div>
   </div>
@@ -395,13 +395,13 @@
     <li>The parents may be related. The rarer the condition in the population, the more likely it is that the parents of an affected child are related by blood.</li>
     <li>In small families the condition often appears in only one child.</li>
   </ul>
-  <p>Examples are cystic fibrosis and sickle cell disease. <b>Cystic fibrosis</b> affects about 1 in 2,500 babies born in the UK – around 240 a year. The glands' secretions are thicker than usual, which can block the small bowel in newborns (meconium ileus), causes thick mucus in the lungs with repeated chest infections and progressive lung damage, and causes pancreatic insufficiency with poor absorption of food and poor growth. Nearly all men with CF are infertile, because the vas deferens is absent or has not developed properly. It is the most common recessive disease in people of Northern European descent, in whom about <b>1 in 25</b> people is a carrier; it is less common in other groups.</p>
+  <p>Examples are cystic fibrosis and sickle cell disease. <b>Cystic fibrosis</b> affects about 1 in 2,500 babies born in the UK – around 240 a year. The glands' secretions are thicker than usual, which can block the small bowel in newborns (meconium ileus), causes thick mucus in the lungs with repeated chest infections and progressive lung damage, and causes pancreatic insufficiency with poor absorption of food and poor growth. Nearly all men with CF are infertile, because the vas deferens is absent or has not developed properly. It is the most common life-limiting recessive disease in people of Northern European descent, in whom about <b>1 in 25</b> people is a carrier; it is less common in other groups.</p>
 
   <h3 id="inh-cf">The workshop's cystic fibrosis scenario</h3>
   <div class="activity" data-ped="cf">
     <div class="act-t">Activity 4.2 · David and Lisa <button class="btn small" type="button" data-ped="cf">Open the pedigree</button></div>
     <ol class="steps">
-      <li data-task="i-cf-open" data-auto="ped:open id=cf">David's sister Amelia has CF. David and his partner Lisa are expecting a baby, and Lisa has no family history of CF. Open their pedigree.</li>
+      <li data-task="i-cf-open" data-auto="ped:open id=cf">David's sister Amelia has CF. David and his partner Lisa are expecting a baby, and Lisa's family are of Northern European descent and have no history of CF. Open their pedigree.</li>
       <li data-task="i-cf-calc" data-check="inherit.calc:1/150">On the <b>Inheritance</b> tab, use the calculator at the bottom to work out the chance that the baby has CF. <button class="do showme" type="button" data-inherit="calc ar 2/3 1/25">show me</button></li>
     </ol>
   </div>
@@ -409,7 +409,7 @@
     <div class="q-text">Click everyone in this pedigree who <b>must</b> be a carrier (an obligate carrier).</div>
     <div class="q-model"><p><b>Philip and Ruth</b>, Amelia's parents. Amelia inherited one faulty copy from each of them, and neither is affected.</p></div>
   </div>
-  <div class="q" data-q="i-cf-baby" data-accept="\b1\s*(/|in)\s*150\b||\b2\s*/\s*300\b||0?\.0066?7?\b||0?\.67\s*%" data-hint="multiply David's carrier chance, Lisa's carrier chance and the chance that two carriers have an affected child">
+  <div class="q" data-q="i-cf-baby" data-prob="1/150" data-hint="multiply David's carrier chance, Lisa's carrier chance and the chance that two carriers have an affected child">
     <div class="q-text">What is the chance that David and Lisa's baby has cystic fibrosis?</div>
     <div class="q-model"><p>2/3 (David a carrier) × 1/25 (Lisa a carrier, from the population figure) × 1/4 (two carriers have an affected child) = 2/300 = <b>1 in 150</b>.</p></div>
   </div>
@@ -421,13 +421,13 @@
       <li data-task="i-cfc-calc" data-check="inherit.calc:1/12">Recalculate the chance that the baby has CF. <button class="do showme" type="button" data-inherit="calc ar 2/3 1/2">show me</button></li>
     </ol>
   </div>
-  <div class="q" data-q="i-cfc-lisa" data-accept="^\s*(1\s*(/|in)\s*2|50\s*%?|0?\.5|one in two|a half|half)\s*$" data-hint="what is the chance that a child of a known carrier is a carrier?">
+  <div class="q" data-q="i-cfc-lisa" data-prob="1/2" data-hint="what is the chance that a child of a known carrier is a carrier?">
     <div class="q-text">Michael is a carrier. What is Lisa's chance of being a carrier now?</div>
     <div class="q-model"><p><b>1 in 2</b>: she has a 1 in 2 chance of having inherited her father's faulty copy. (Her mother Anne could also be a carrier by chance, but that adds very little.)</p></div>
   </div>
-  <div class="q" data-q="i-cfc-baby" data-accept="\b1\s*(/|in)\s*12\b||\b2\s*/\s*24\b||0?\.083\d*||8\.3\s*%" data-hint="replace Lisa's carrier chance in your earlier calculation">
+  <div class="q" data-q="i-cfc-baby" data-prob="1/12" data-hint="replace Lisa's carrier chance in your earlier calculation">
     <div class="q-text">What is the chance that the baby has CF now?</div>
-    <div class="q-model"><p>1/2 × 2/3 × 1/4 = <b>1 in 12</b>, more than ten times higher than before. Consanguinity raises the chance that both partners carry the same recessive variant, inherited from a shared ancestor.</p></div>
+    <div class="q-model"><p>1/2 × 2/3 × 1/4 = <b>1 in 12</b>, more than ten times higher than before. Most of that rise comes from Michael's carrier test, which takes Lisa's chance of being a carrier from 1 in 25 to 1 in 2. The shared ancestry is why the test was worth doing: Philip's variant may have come down from the great-grandparents, so John, and then Michael, could carry the same one. Without the test, the shared ancestry alone would raise the baby's chance only to about 1 in 60. Related partners are more likely to carry the same recessive variant, inherited from an ancestor they share.</p></div>
   </div>
 
   <h2 id="inh-ad">Autosomal dominant</h2>
@@ -441,7 +441,7 @@
   <p>Examples include inherited breast cancer and Huntington's disease. Two things make dominant pedigrees harder to read:</p>
   <div class="two-col">
     <div class="cardlet"><h4>Penetrance</h4><p>The proportion of people with the variant who develop the condition. Inherited breast cancer shows <b>reduced penetrance</b>: a <i>BRCA</i> variant raises the risk, but not everyone with it develops cancer. Huntington's disease shows <b>complete penetrance</b>: people with the full expansion develop it if they live to the age of onset.</p></div>
-    <div class="cardlet"><h4>Variable expressivity</h4><p>The same condition can show itself differently in different people. Neurofibromatosis type 1 can be mild or severe, even within one family. In Huntington's disease the age of onset and severity can vary between generations.</p></div>
+    <div class="cardlet"><h4>Variable expressivity</h4><p>The same condition can show itself differently in different people. Neurofibromatosis type 1 can be mild or severe, even within one family. In Huntington's disease the age of onset and severity can vary between generations, largely because of <b>anticipation</b>: the CAG repeat can lengthen as it is passed on, especially from a father, and longer repeats tend to start earlier.</p></div>
   </div>
 
   <h3 id="inh-brca">The workshop's BRCA2 scenario</h3>
@@ -451,11 +451,11 @@
       <li data-task="i-brca-open" data-auto="ped:open id=brca2">Jane is pregnant. Her partner Adam's elder sister had breast cancer at 34 and was offered genetic testing (in England, test directory indication R208 includes breast cancer under 40). A pathogenic variant in <i>BRCA2</i>, c.5946delT, was found. Open the pedigree.</li>
     </ol>
   </div>
-  <div class="q" data-q="i-brca-adam" data-accept="^\s*(1\s*(/|in)\s*2|50\s*%?|0?\.5|one in two|a half|half)\s*$" data-hint="which parent is the variant most likely to have come from, and what is the chance a child inherits it?">
+  <div class="q" data-q="i-brca-adam" data-prob="1/2" data-hint="which parent is the variant most likely to have come from, and what is the chance a child inherits it?">
     <div class="q-text">What is Adam's chance of carrying the <i>BRCA2</i> variant?</div>
     <div class="q-model"><p><b>1 in 2</b>. His sister inherited it from one of their parents. Their mother had breast cancer at 47 and her sister had ovarian cancer, so it almost certainly came from their mother, and each of her children had a 1 in 2 chance of inheriting it.</p></div>
   </div>
-  <div class="q" data-q="i-brca-baby" data-accept="^\s*(1\s*(/|in)\s*4|25\s*%?|0?\.25|one in four|a quarter)\s*$" data-hint="Adam's chance multiplied by the chance he passes it on">
+  <div class="q" data-q="i-brca-baby" data-prob="1/4" data-hint="Adam's chance multiplied by the chance he passes it on">
     <div class="q-text">What is the chance that Jane and Adam's baby has inherited the variant?</div>
     <div class="q-model"><p>1/2 × 1/2 = <b>1 in 4</b>. If Adam is tested, this becomes either 1 in 2 or close to zero.</p></div>
   </div>
@@ -465,7 +465,7 @@
   </div>
   <div class="q" data-q="i-brca-adam-men">
     <div class="q-text">Adam is a man. Why might testing still matter to him and his family?</div>
-    <div class="q-model"><p>Men with <i>BRCA2</i> variants have a higher risk of prostate cancer (often more aggressive), male breast cancer and pancreatic cancer than other men, so they may be offered screening. And each of his children, sons or daughters, has a 1 in 2 chance of inheriting it. The variant can pass through unaffected men, which is one reason inherited breast cancer can seem to “skip” a generation.</p></div>
+    <div class="q-model"><p>Men with <i>BRCA2</i> variants have a higher risk of prostate cancer (often more aggressive), male breast cancer and pancreatic cancer than other men, so they may be offered screening. And if he carries it, each of his children, sons or daughters, has a 1 in 2 chance of inheriting it. The variant can pass through unaffected men, which is one reason inherited breast cancer can seem to “skip” a generation.</p></div>
   </div>
 
   <h2 id="inh-xl">X-linked</h2>
@@ -513,7 +513,7 @@
   <div class="q" data-q="i-fc-mcq" data-type="mcq">
     <div class="q-text">Family C: which pattern fits best?</div>
     <div class="mcq">
-      <label data-why="With dominant inheritance, I-2, II-2 and III-2 would all have to carry the variant without being affected, while every man with it was affected. That is possible, but an X-linked pattern explains the family much more simply."><input type="radio"> Autosomal dominant</label>
+      <label data-why="With dominant inheritance, one of I-1 and I-2, and also II-2 and III-2, would all have to carry the variant without being affected, while every man with it was affected. That is possible, but an X-linked pattern explains the family much more simply."><input type="radio"> Autosomal dominant</label>
       <label data-why="The condition appears in three generations and only in males; a recessive condition would affect both sexes."><input type="radio"> Autosomal recessive</label>
       <label data-correct data-why="Only males are affected, they are related through unaffected women, and there is no father-to-son transmission."><input type="radio"> X-linked recessive</label>
     </div>
@@ -525,7 +525,7 @@
   <div class="q" data-q="i-fd-mcq" data-type="mcq">
     <div class="q-text">Family D has breast cancer in three generations. Which explanation fits best?</div>
     <div class="mcq">
-      <label data-why="I-2 and II-2 are affected but II-2's children have an unaffected father, and the cancers are in every generation: that is not a recessive picture."><input type="radio"> Autosomal recessive</label>
+      <label data-why="For a recessive condition, every affected woman's partner would also need to be a carrier, and here affected people appear in every generation, passed from parent to child: a vertical pattern, typical of dominant inheritance."><input type="radio"> Autosomal recessive</label>
       <label data-correct data-why="Affected women in three generations, linked through an unaffected man (II-3). He must carry the variant, because his mother and his daughter are affected: reduced penetrance, made more striking because breast cancer is much rarer in men."><input type="radio"> Autosomal dominant with reduced penetrance</label>
       <label data-why="With X-linked recessive inheritance, men would be affected more often than women. Here only women are affected."><input type="radio"> X-linked recessive</label>
     </div>
@@ -536,7 +536,7 @@
   </div>
 
   <h2 id="inh-genes">Family histories in gene discovery and variant interpretation</h2>
-  <p>Careful study of a condition across many families can lead to new genes. Some families meet the diagnostic criteria for <b>neurofibromatosis type 1</b> – an autosomal dominant condition, caused by variants in <i>NF1</i> on chromosome 17, that usually presents with several café-au-lait patches – but have no <i>NF1</i> variant. In several such families, everyone affected had café-au-lait patches and freckling in the armpits but no neurofibromas, and all were found to have a variant in a different gene, <i>SPRED1</i>, that segregated with the condition (<i>J Med Genet</i> 2009;46:425–430). This is now called Legius syndrome.</p>
+  <p>Careful study of a condition across many families can lead to new genes. Some families meet the diagnostic criteria for <b>neurofibromatosis type 1</b> – an autosomal dominant condition, caused by variants in <i>NF1</i> on chromosome 17, that usually presents with several café-au-lait patches – but have no <i>NF1</i> variant. In several such families, everyone affected had café-au-lait patches and freckling in the armpits but no neurofibromas, and all were found to have a variant in a different gene, <i>SPRED1</i>, that segregated with the condition (<i>J Med Genet</i> 2009;46:425–430). The gene was first linked to this condition by Brems and colleagues in 2007, and it is now called Legius syndrome.</p>
   <div class="q" data-q="i-segregation">
     <div class="q-text">A <b>variant of uncertain significance</b> (VUS) is found in a woman with a rare condition. How could her family help decide whether it causes the condition?</div>
     <div class="q-model"><p>By <b>segregation analysis</b>: test her affected and unaffected relatives. If the variant is found in every affected relative, and not in unaffected adults who are past the usual age of onset, that supports it causing the condition; each additional informative relative adds evidence. If an affected relative does not have it, it is unlikely to be the cause. The pedigree shows who is worth testing and how informative each result would be.</p></div>
@@ -553,6 +553,7 @@
   <div class="callout ethics">
     <div class="co-t">Thinking about ethics in genetics</div>
     <p>There is often no single right answer, and several ethical issues can arise in the same family. Professional guidelines help, by giving precedent and consistency, as does discussion in a multidisciplinary team. Communication and documentation matter. Useful principles to think with are <b>confidentiality</b>, <b>beneficence</b> (doing good), <b>non-maleficence</b> (avoiding harm), <b>justice</b> (fairness) and <b>autonomy</b>. For each scenario, ask: what are the possible harms and benefits, who do they apply to, and what might help?</p>
+    <p>Each scenario is a different family, except that scenario 5 returns to the family in scenario 3. The lecture reuses some first names (Brian, Bob, Gwen, Philip and Helen each appear in more than one family), so check which family you are looking at. In these pedigrees, as in the lecture, a dot marks someone who has the family's variant but no symptoms yet; strictly, the NSGC symbol for this is a vertical line (see the <button class="goto" data-goto="ref-symbols" type="button">symbols table</button>).</p>
   </div>
   <div class="q" data-q="e-ought" data-type="mcq">
     <div class="q-text">Ethics is about how things <i>ought</i> to be (normative statements), not only how they <i>are</i> (descriptive statements). Which of these is normative?</div>
@@ -582,11 +583,11 @@
   </div>
   <div class="q" data-q="e-lynch-brian">
     <div class="q-text">Brian does not want his daughters, now 26 and 24, to be told. What are the competing interests, and what would you do?</div>
-    <div class="q-model"><p>Gwen's daughters are adults with their own <b>autonomy</b>, and each has a 1 in 2 chance of a variant for which there is effective prevention: colonoscopy every two years from 25 for <i>MLH1</i> carriers, which reduces deaths from bowel cancer (<b>beneficence</b>; harm from not knowing). Brian may want to protect them, may be grieving, or may feel guilty or anxious (the lecture's reasons for non-disclosure). The information is not only his: it comes from Gwen's and Alice's results, and Alice could tell her nieces herself. A sensible approach is to explore Brian's reasons, explain what the daughters could gain, and support Alice in sharing the information, for example with a family letter, offering to review it later. Professional guidance accepts that in exceptional cases a clinician's duty may extend beyond their own patient – but information should only be passed on if it brings a direct benefit, after weighing the interests involved, and the reasoning should be documented.</p></div>
+    <div class="q-model"><p>Gwen's daughters are adults with their own <b>autonomy</b>, and each has a 1 in 2 chance of a variant for which there is effective prevention: colonoscopy every two years from 25 for <i>MLH1</i> carriers, which reduces deaths from bowel cancer, daily aspirin, and later on a discussion of their raised risk of womb and ovarian cancer (<b>beneficence</b>; harm from not knowing). Brian may want to protect them, may be grieving, or may feel guilty or anxious (the lecture's reasons for non-disclosure). The information is not only his: it comes from Gwen's and Alice's results, and Alice could tell her nieces herself. A sensible approach is to explore Brian's reasons, explain what the daughters could gain, and support Alice in sharing the information, for example with a family letter, offering to review it later. Professional guidance accepts that in exceptional cases a clinician's duty may extend beyond their own patient – but information should only be passed on if it brings a direct benefit, after weighing the interests involved, and the reasoning should be documented.</p></div>
   </div>
   <div class="q" data-q="e-lynch-annbob">
     <div class="q-text">Ann and Bob have declined testing but want colonoscopies every two years. Is that reasonable? What about their children?</div>
-    <div class="q-model"><p>It is their right not to know their genetic status, and surveillance as if they were at risk is a safe choice for them. But there are costs: half of people in their position do not carry the variant and would be having colonoscopies (which have their own small risks) for nothing, which raises a question of <b>justice</b> in the use of NHS resources. Their children are adults at 1 in 4 risk who have not been told; testing them could reveal their parents' status. Encourage Ann and Bob to talk to their children, and offer help with that.</p></div>
+    <div class="q-model"><p>It is their right not to know their genetic status, and colonoscopy as if they carried the variant protects them against bowel cancer. It does not cover everything, though. If Ann carries the variant, she also has a high chance of womb (endometrial) cancer and a raised chance of ovarian cancer, which colonoscopy does not detect. Carriers are also offered daily aspirin, and women can consider risk-reducing gynaecological surgery once they have completed their family. Without a test, Ann cannot weigh up those choices on good evidence. There are other costs too: half of people in their position do not carry the variant and would be having colonoscopies (which have their own small risks) for nothing, which raises a question of <b>justice</b> in the use of NHS resources. Their children are adults at 1 in 4 risk who have not been told; testing them could reveal their parents' status. Encourage Ann and Bob to talk to their children, and offer help with that.</p></div>
   </div>
   <table class="table">
     <tr><th>Reasons people give for not telling relatives</th><th>What can help</th></tr>
@@ -613,7 +614,7 @@
     <div class="act-t">Activity 5.2 · Testing by proxy <button class="btn small" type="button" data-ped="hd">Open the pedigree</button></div>
     <ol class="steps"><li data-task="e-hd-open" data-auto="ped:open id=hd">Open the Huntington's disease pedigree.</li></ol>
   </div>
-  <div class="q" data-q="e-hd-claire" data-accept="^\s*(1\s*(/|in)\s*4|25\s*%?|0?\.25|one in four|a quarter)\s*$" data-hint="what is Anne's chance, and what is the chance she passed it on?">
+  <div class="q" data-q="e-hd-claire" data-prob="1/4" data-hint="what is Anne's chance, and what is the chance she passed it on?">
     <div class="q-text">What is Claire's chance of having inherited the HD expansion?</div>
     <div class="q-model"><p><b>1 in 4</b>: Anne has a 1 in 2 chance of having inherited it from Brian, and if she has, a 1 in 2 chance of having passed it to Claire.</p></div>
   </div>
@@ -647,7 +648,7 @@
   <h2 id="eth-repro">Scenario 4: reproductive decisions</h2>
   <div class="callout scenario">
     <div class="co-t">The family</div>
-    <p><b>Martha</b> (23) has the Huntington's disease expansion, like her mother Helen. She and Garth are 8 weeks pregnant and do not want a baby with the expansion. They have chorionic villus sampling (CVS), which shows that the baby has it, and Martha decides that she does not want to end the pregnancy. Her sister <b>Josie</b> (25), who has separated from her partner, is also 8 weeks pregnant. Josie does not want to know whether she will develop HD herself.</p>
+    <p><b>Martha</b> (23) has the Huntington's disease expansion, like her mother Helen. She and Garth are 8 weeks pregnant and do not want a baby with the expansion. At 12 weeks they have chorionic villus sampling (CVS), which shows that the baby has it, and Martha decides that she does not want to end the pregnancy. Her sister <b>Josie</b> (25), who has separated from her partner, is also 8 weeks pregnant. Josie does not want to know whether she will develop HD herself.</p>
   </div>
   <div class="activity" data-ped="hd-pregnancy">
     <div class="act-t">Activity 5.4 · Two pregnancies <button class="btn small" type="button" data-ped="hd-pregnancy">Open the pedigree</button></div>
@@ -659,7 +660,7 @@
     <div class="q-text">Martha decides to continue the pregnancy after the test shows the baby has the HD expansion. What ethical issues does this raise for the future child?</div>
     <div class="q-model"><p>It is equivalent to a predictive test on a child for an adult-onset condition: the child will grow up with their HD status already known, without having chosen to know it. How will this affect their upbringing? When and how will they be told? How will they feel about their parents' decision? These implications are discussed in depth with couples before prenatal diagnosis, and there is usually an expectation that an affected pregnancy will be ended – but couples may still decide to continue, and all the team can do is make sure they understand the ethical complications.</p></div>
   </div>
-  <div class="q" data-q="e-repro-josie" data-accept="^\s*(1\s*(/|in)\s*2|50\s*%?|0?\.5|one in two|a half|half)\s*$" data-hint="exclusion testing tells you which of Josie's grandparents the baby's chromosome 4 came from – not whether Josie has the expansion">
+  <div class="q" data-q="e-repro-josie" data-prob="1/2" data-hint="exclusion testing tells you which of the baby's grandparents, Helen or her husband, the baby's chromosome 4 came from – not whether Josie has the expansion">
     <div class="q-text">Josie has <b>exclusion testing</b>, which shows whether the baby inherited the chromosome 4 that Josie received from her affected mother Helen (“high risk”) or from her father (“low risk”). The result is high risk. What is the baby's chance of having the HD expansion?</div>
     <div class="q-model"><p><b>1 in 2</b> – the same as Josie's own chance. The baby has Helen's chromosome 4; whether that copy carries the expansion is exactly what Josie has chosen not to find out. Josie decides not to end the pregnancy, so her child will grow up at 1 in 2 risk – and if the child is ever tested and has the expansion, that would reveal Josie's status too.</p></div>
   </div>
@@ -691,7 +692,7 @@
     <li>Should variants that cannot be acted on be fed back to patients?</li>
     <li>Genetic information about one person allows inferences about the people they are related to.</li>
   </ul>
-  <p>In the UK, personal data are governed by the <b>Data Protection Act 2018</b> and the <b>UK GDPR</b>. Genetic data are “special category” personal data, along with health and biometric data. Data that can identify a person indirectly – for example data with a study number instead of a name, which could be linked back to the person – can still be personal data. Truly anonymised data are not. The Information Commissioner's Office says that genetic data with enough markers to be unique to an individual is personal data even without a name, although some, such as the PHG Foundation, argue that genomic data are not identifiable unless they can be linked back to a person. Safeguards include managed access, de-identification, the <b>Caldicott principles</b>, trusted research environments and research ethics review.</p>
+  <p>In the UK, personal data are governed by the <b>Data Protection Act 2018</b> and the <b>UK GDPR</b> (both since amended by the Data (Use and Access) Act 2025). Genetic data are “special category” personal data, as are, among others, data concerning health and biometric data used to identify someone. Data that can identify a person indirectly – for example data with a study number instead of a name, which could be linked back to the person – can still be personal data. Truly anonymised data are not. The Information Commissioner's Office says that genetic data with enough markers to be unique to an individual is personal data even without a name, although some, such as the PHG Foundation, argue that genomic data are not identifiable unless they can be linked back to a person. Safeguards include managed access, de-identification, the <b>Caldicott principles</b>, trusted research environments and research ethics review.</p>
   <div class="q" data-q="e-consent" data-type="mcq">
     <div class="q-text">Which of these is <b>not</b> a requirement for consent to be legally valid?</div>
     <div class="mcq">
@@ -795,11 +796,11 @@
   <ul>
     <li>Adapted from two sessions of <i>GM1B Introduction to Human Genetics and Genomics</i>: the <b>Genomics Workshop: Taking and Drawing a Family Tree</b> by Madelaine Corcoran and Jaskiran Gill (Addenbrooke's Clinical Genetics Department), and the lecture <b>‘Ethics’, legal and governance issues in genetics and genomics</b> by Dr Tim Hearn. The families in the ethics scenarios and the cystic fibrosis and <i>BRCA2</i> scenarios are from these sessions; the interviews, the Okafor family and families A to D were written for this practical.</li>
     <li>Drawing tool: <b>Pedigree Studio</b> by Timothy J Hearn (MIT licence), <a href="https://github.com/comparativechrono/PedigreeStudio" target="_blank" rel="noopener">github.com/comparativechrono/PedigreeStudio</a>.</li>
-    <li>Pedigree nomenclature: Bennett RL <i>et al.</i> (2008) Standardized human pedigree nomenclature: update and assessment of the recommendations of the National Society of Genetic Counselors. <i>J Genet Couns</i> 17:424–433. Bennett RL <i>et al.</i> (2022) Standardized pedigree nomenclature update centered on sex and gender inclusivity. <i>J Genet Couns</i> 31:1238–1248.</li>
-    <li>Health Education England Genomics Education Programme: <a href="https://www.genomicseducation.hee.nhs.uk/taking-and-drawing-a-family-history/" target="_blank" rel="noopener">Taking and drawing a family history</a>.</li>
+    <li>Pedigree nomenclature: Bennett RL <i>et al.</i> (2008) Standardized human pedigree nomenclature: update and assessment of the recommendations of the National Society of Genetic Counselors. <i>J Genet Couns</i> 17:424–433. Bennett RL <i>et al.</i> (2022) Standardized pedigree nomenclature update centered on sex and gender inclusivity. <i>J Genet Couns</i> 31:1238–1248. Resta RG <i>et al.</i> (2022) Both sides now: changing a long-standing pedigree tradition of men on the left and women on the right. <i>J Genet Couns</i>, doi:10.1002/jgc4.1662.</li>
+    <li>NHS England Genomics Education Programme (formerly part of Health Education England): <a href="https://www.genomicseducation.hee.nhs.uk/taking-and-drawing-a-family-history/" target="_blank" rel="noopener">Taking and drawing a family history</a>.</li>
     <li>Cystic fibrosis figures: the Cystic Fibrosis Trust (<a href="https://www.cysticfibrosis.org.uk/" target="_blank" rel="noopener">cysticfibrosis.org.uk</a>). CVS: <a href="https://www.nhs.uk/tests-and-treatments/chorionic-villus-sampling-cvs/" target="_blank" rel="noopener">NHS – chorionic villus sampling</a>.</li>
-    <li><i>SPRED1</i> families: <i>J Med Genet</i> 2009;46:425–430, doi:10.1136/jmg.2008.065243. Down syndrome prevalence: Wu J, Morris JK (2013) <i>Eur J Hum Genet</i> 21:1016–1019.</li>
-    <li><i>ABC v St George's Healthcare NHS Trust</i> [2020] EWHC 455 (QB).</li>
+    <li><i>SPRED1</i> and Legius syndrome: Brems H <i>et al.</i> (2007) <i>Nat Genet</i> 39:1120–1126; Pasmant E <i>et al.</i> (2009) <i>J Med Genet</i> 46:425–430, doi:10.1136/jmg.2008.065243. Down syndrome prevalence: Wu J, Morris JK (2013) <i>Eur J Hum Genet</i> 21:1016–1019.</li>
+    <li><i>ABC v St George's Healthcare NHS Trust</i> [2020] EWHC 455 (QB). Aspirin in Lynch syndrome: NICE guideline NG151, <i>Colorectal cancer</i> (2020), recommendation 1.1.1.</li>
   </ul>
 </section>
 

@@ -10,7 +10,7 @@
     {"id": "bobw", "sex": "F", "gen": 0, "x": 8, "deceased": true, "label": "Bob's wife"},
     {"id": "gwen", "sex": "F", "gen": 1, "x": 4, "text": "Gwen, 67", "name": "Gwen", "label": "Gwen (Claire's grandmother)"},
     {"id": "brian", "sex": "M", "gen": 1, "x": 6, "affected": "hd", "text": "Brian, 65", "name": "Brian", "label": "Brian (Claire's grandfather)"},
-    {"id": "bro", "sex": "M", "gen": 1, "x": 9, "deceased": true, "text": "d. 30, road accident", "label": "Brian's brother"},
+    {"id": "bro", "sex": "M", "gen": 1, "x": 9, "label": "Brian's brother"},
     {"id": "anneh", "sex": "M", "gen": 2, "x": 2.5, "label": "Anne's husband"},
     {"id": "anne", "sex": "F", "gen": 2, "x": 4.5, "text": "Anne, 46", "name": "Anne", "label": "Anne (Claire's mother)"},
     {"id": "philip", "sex": "M", "gen": 2, "x": 7, "text": "Philip, 39", "name": "Philip", "label": "Philip (Claire's uncle)"},

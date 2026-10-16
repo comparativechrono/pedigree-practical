@@ -251,7 +251,7 @@
       const body = h('div.q-body');
       const actions = h('div.q-actions');
       const fb = h('span.q-feedback', { 'aria-live': 'polite' });
-      const rec = { id, q, fb, model, num, type: q.dataset.type || (q.dataset.accept ? 'short' : 'text'), body, actions };
+      const rec = { id, q, fb, model, num, type: q.dataset.type || (q.dataset.accept || q.dataset.prob ? 'short' : 'text'), body, actions };
       const saved = state.answers[id] || {};
 
       if (rec.type === 'mcq') {
@@ -317,13 +317,49 @@
     return !rec.model.hidden;
   }
   function norm(s) {
-    return String(s || '').toLowerCase().replace(/[‐-―−]/g, '-').replace(/\s+/g, ' ').trim();
+    return String(s || '').toLowerCase().replace(/[‐-―−]/g, '-').replace(/\s+/g, ' ').trim().replace(/[.!?;,]+$/, '');
   }
+
+  /* Chances written in any of the usual ways – 1/4, 1 in 4, 2 out of 3,
+     25%, 0.25, one in four, a quarter, half, 50:50 – as numbers, in the
+     order they appear. Numbers above 1 that are not fractions or
+     percentages are not chances, so they are skipped. */
+  const WORDNUM = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, 'twenty-five': 25, fifty: 50 };
+  function chancesIn(text) {
+    const t = (' ' + String(text || '').toLowerCase() + ' ')
+      .replace(/\bfifty[\s-]*fifty\b|\b50\s*[:/]\s*50\b/g, ' 1/2 ')
+      .replace(/\btwo[\s-]+thirds?\b/g, ' 2/3 ')
+      .replace(/\b(?:a|one)[\s-]+third\b/g, ' 1/3 ')
+      .replace(/\b(?:(?:a|one)[\s-]+)?quarter\b/g, ' 1/4 ')
+      .replace(/\b(?:(?:a|one)[\s-]+)?half\b/g, ' 1/2 ')
+      .replace(/\s*\b(?:per\s*cent|percent)\b/g, '%')
+      .replace(/\b(twenty-five|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifty)\b/g, (w) => ' ' + WORDNUM[w] + ' ');
+    const n = '(\\d+(?:\\.\\d+)?|\\.\\d+)';
+    const re = new RegExp(n + '\\s*(?:/|\\bin\\b|\\bout of\\b)\\s*' + n + '|' + n + '\\s*%|' + n, 'g');
+    const out = [];
+    let m;
+    while ((m = re.exec(t))) {
+      if (m[1] != null) { if (+m[2]) out.push(+m[1] / +m[2]); }
+      else if (m[3] != null) out.push(+m[3] / 100);
+      else if (+m[4] <= 1) out.push(+m[4]);
+    }
+    return out;
+  }
+  const closeTo = (x, want) => Math.abs(x - want) <= 0.03 * Math.abs(want) + 1e-9;
+  PP.app.chancesIn = chancesIn;
   function checkShort(rec, user) {
     const v = norm(rec.input.value);
     if (!v) { rec.fb.textContent = ''; return; }
     const accept = (rec.q.dataset.accept || '').split('||').map((s) => s.trim()).filter(Boolean);
-    const ok = accept.some((a) => { try { return new RegExp(a, 'i').test(v); } catch (e) { return v === norm(a); } });
+    let ok = false;
+    if (rec.q.dataset.prob) {
+      // a chance: right if the first or the last chance in the answer is
+      // within 3% of the expected value (so "2/3 × 1/25 × 1/4 = 1/150" counts)
+      const want = chancesIn(rec.q.dataset.prob)[0];
+      const got = chancesIn(v);
+      ok = got.length > 0 && (closeTo(got[0], want) || closeTo(got[got.length - 1], want));
+    }
+    if (!ok) ok = accept.some((a) => { try { return new RegExp(a, 'i').test(v); } catch (e) { return v === norm(a); } });
     rec.fb.className = 'q-feedback ' + (ok ? 'ok' : 'no');
     rec.fb.textContent = ok ? '✓ Correct' : '✗ Not quite – ' + (rec.q.dataset.hint || 'check again');
     rec.q.classList.toggle('answered', ok);

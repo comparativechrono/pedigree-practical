@@ -313,7 +313,7 @@
       const eSep = /separated/.test(ec.type), sSep = /separated/.test(sc.type);
       if (eCon && !sCon && !ignore.has('couple.consanguineous')) items.push({ level: 'wrong', text: `${names} are related to each other: their relationship line should be double.`, ids: [a, b] });
       if (!eCon && sCon) items.push({ level: 'wrong', text: `${names} are not related to each other, so their line should be single.`, ids: [a, b] });
-      if (eSep && !sSep) items.push({ level: 'wrong', text: `${names} have separated: put a slash through their relationship line.`, ids: [a, b] });
+      if (eSep && !sSep) items.push({ level: 'wrong', text: `${names} have separated: click their relationship line and choose Separated, which adds two short slashes.`, ids: [a, b] });
       if (!eSep && sSep) items.push({ level: 'wrong', text: `${names} are still together, so their line should not be crossed through.`, ids: [a, b] });
     });
     E.twins.forEach((t) => {
