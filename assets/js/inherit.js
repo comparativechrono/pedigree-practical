@@ -1,7 +1,7 @@
 /* =====================================================================
    The Inheritance tab: what each child of a couple can inherit
    (autosomal recessive, autosomal dominant, X-linked recessive), drawn
-   as chromosomes like the lecture slides, and a calculator that chains
+   as chromosomes, and a calculator that chains
    probabilities into the chance a baby is affected.
    ===================================================================== */
 (function () {

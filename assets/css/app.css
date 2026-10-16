@@ -138,8 +138,8 @@ body.dragging iframe { pointer-events: none; }
 .callout.ethics .co-t { color: var(--ethics); }
 .callout.warn { background: var(--warn-soft); border-color: #f0dca3; }
 .callout.warn .co-t { color: var(--warn); }
-.callout.lecture { background: #f1f6ee; border-color: #d3e6c7; }
-.callout.lecture .co-t { color: #3f6b22; }
+.callout.points { background: #f1f6ee; border-color: #d3e6c7; }
+.callout.points .co-t { color: #3f6b22; }
 .callout.scenario { background: #fffdf4; border-color: #eadfae; border-left: 4px solid #c9a227; }
 .callout.scenario .co-t { color: #7a5f00; }
 

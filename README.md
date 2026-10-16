@@ -41,6 +41,8 @@ Students install nothing. Their drawings, answers and interviews are saved in th
 | 5 | **Ethics**: the lecture's five scenarios, each with its pedigree (non-disclosure in Lynch syndrome, testing by proxy in Huntington's disease, testing children, reproductive decisions, an unexpected finding from a genome); consent, confidentiality and the UK GDPR; ways of reasoning about ethics; eugenics | Ethics lecture | 45 min |
 | R | **Reference**: symbols, Studio controls, glossary, notes for staff, sources | | |
 
+The practical stands on its own. It is based on the programme's family history workshop and ethics lecture (the *Based on* column), but the text never refers back to them, so it works with or without those sessions.
+
 Students get feedback as they go:
 
 - **Steps tick themselves** when the page sees them done: a proband marked, a separated couple, identical twins, a key, the right cross on the Inheritance tab, every important interview question asked. Most steps also have a **▶ show me** button.
@@ -257,7 +259,7 @@ Use `class="do showme"` for the round “show me” pills and `class="goto"` for
 
 ### Other building blocks
 
-- **Callouts:** `<div class="callout info">`, `lecture` (from the workshop or lecture), `scenario` (a clinical scenario), `ethics` or `warn`, with `<div class="co-t">Title</div>` inside.
+- **Callouts:** `<div class="callout info">`, `points` (key points to remember), `scenario` (a clinical scenario), `ethics` or `warn`, with `<div class="co-t">Title</div>` inside.
 - **The symbol table:** `<table class="symtab" data-symbols="all"></table>` (or `basic` or `lines`). The rows are in `assets/js/symbols.js`.
 - **Optional extensions:** wrap them in `<div class="optional">…</div>`. They are labelled *Extension* and are not counted in the progress bar.
 - **Keyboard keys:** `<span class="kbd">Ctrl</span>`.

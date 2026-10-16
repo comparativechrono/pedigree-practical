@@ -13,7 +13,7 @@
     {"id": "preg", "topic": "partner", "q": "Have you ever been pregnant?", "a": "No.", "key": true, "after": "partner"},
     {"id": "sibs", "topic": "sibs", "q": "Do you have any brothers or sisters?", "a": "Two younger brothers, Ryan and Luke. They're twins – they're 28.", "key": true},
     {"id": "twins", "topic": "sibs", "q": "Are Ryan and Luke identical or non-identical twins?", "a": "Identical. Even Mum mixes them up on the phone.", "key": true, "after": "sibs"},
-    {"id": "sameparents", "topic": "sibs", "q": "Do you all have the same parents?", "a": "Ryan, Luke and I do. I've also got a half-brother, Josh. He's 19 – he's Dad's son with his wife, Lisa.", "key": true, "after": "sibs", "note": "This is why the workshop suggests asking ‘Do you all have the same parents?’: half-brothers and half-sisters are easy to miss otherwise."},
+    {"id": "sameparents", "topic": "sibs", "q": "Do you all have the same parents?", "a": "Ryan, Luke and I do. I've also got a half-brother, Josh. He's 19 – he's Dad's son with his wife, Lisa.", "key": true, "after": "sibs", "note": "This is why it is worth asking ‘Do you all have the same parents?’: half-brothers and half-sisters are easy to miss otherwise."},
     {"id": "sibshealth", "topic": "sibs", "q": "How is your brothers’ health?", "a": "All three are fine.", "key": true, "after": "sibs"},
     {"id": "together", "topic": "parents", "q": "Are your parents still together?", "a": "No. They separated when I was ten. Dad married again – Lisa, Josh’s mum.", "key": true},
     {"id": "mum", "topic": "parents", "q": "How old is your mum, and how is her health?", "a": "Mum's 58. She had breast cancer when she was 42. She had an operation and chemotherapy, and she's been well since.", "key": true},
