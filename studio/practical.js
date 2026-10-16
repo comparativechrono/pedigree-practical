@@ -66,12 +66,25 @@
   const pshipsOf = (id) => partnerships.filter((p) => p.fromId === id || p.toId === id);
   const kidsOf = (pid) => childLinks.filter((c) => c.partnershipId === pid).map((c) => c.childId).filter((k) => persons.has(k));
 
-  /* Run several engine operations as one undoable step. */
-  function group(fn) {
+  /* Run several engine operations as one undoable step. With tidy, the
+     pedigree is laid out again afterwards, in the same step: the engine's
+     placement of new people on its own can leave two couples' children on
+     one shared sibship line, or a generation drawn half a row out. */
+  function group(fn, opts) {
     pushUndo();
     undoGroupActive = true;
+    const oneAtATime = individualMoveMode;
+    individualMoveMode = false; // new relatives are placed as families
     let out;
-    try { out = fn(); } finally { undoGroupActive = false; }
+    try {
+      out = fn();
+      if (opts && opts.tidy && persons.size) {
+        runManagedPedigreeLayout({ seedIds: Array.from(persons.keys()), reason: 'addRelative' });
+      }
+    } finally {
+      undoGroupActive = false;
+      individualMoveMode = oneAtATime;
+    }
     keepInView();
     updateAllConnections();
     updateNumbering();
@@ -96,6 +109,17 @@
     if (typeof legendX === 'number') { legendX += dx; legendY += dy; const lb = $('legend-box'); if (lb) { lb.style.left = legendX + 'px'; lb.style.top = legendY + 'px'; } }
     panX -= dx * zoomLevel;
     panY -= dy * zoomLevel;
+    applyTransform();
+  }
+
+  /* Where someone is on the screen, so that the view can be moved to keep
+     them there after the pedigree has been laid out again. */
+  const screenSpot = (id) => (persons.has(id) ? { x: getPersonX(id) * zoomLevel + panX, y: getPersonY(id) * zoomLevel + panY } : null);
+  function holdOnScreen(id, spot) {
+    const now = screenSpot(id);
+    if (!spot || !now) return;
+    panX += spot.x - now.x;
+    panY += spot.y - now.y;
     applyTransform();
   }
 
@@ -169,8 +193,10 @@
     const p = persons.get(id);
     if (!p) { status('Select a person first'); return null; }
     if (isLineShape(p.shape) || p.shape === 'miscarriage') { status('Choose a person, not a ' + (p.shape === 'miscarriage' ? 'pregnancy loss' : 'line symbol')); return null; }
+    if (kind === 'parents' && parentPship(id)) { status('This person already has parents in the pedigree'); return []; }
     let added = [];
     let msg = '';
+    const spot = screenSpot(id);
     group(() => {
       if (kind === 'partner') {
         const r = addPartnerCore(id);
@@ -187,7 +213,6 @@
         if (k) added.push(k);
         msg = (kind === 'son' ? 'Son' : kind === 'daughter' ? 'Daughter' : 'Child') + ' added' + (ps.length ? '' : ', with a partner to be the other parent');
       } else if (kind === 'parents') {
-        if (parentPship(id)) { msg = 'This person already has parents in the pedigree'; return; }
         const ps = addParentsCore(id);
         added = [ps.fromId, ps.toId];
         msg = 'Parents added';
@@ -199,7 +224,8 @@
         if (k) added.push(k);
         msg = (kind === 'brother' ? 'Brother' : 'Sister') + ' added' + (had ? '' : ', with parents') + '. Brothers and sisters go oldest on the left: use ◀ ▶ to change the order.';
       }
-    });
+    }, { tidy: true });
+    holdOnScreen(id, spot);
     if (persons.has(id)) selectPerson(id);
     flashPeople(added);
     status(msg || 'Done');
@@ -211,37 +237,54 @@
     const ps = partnerships.find((x) => x.id === selectedPartnershipId);
     if (!ps) return null;
     let k = null;
-    group(() => { k = addChildCore(ps, shape); });
+    const spot = screenSpot(ps.fromId);
+    group(() => { k = addChildCore(ps, shape); }, { tidy: true });
+    holdOnScreen(ps.fromId, spot);
     flashPeople(k ? [k] : []);
     status('Child added');
     emit('action', { type: 'quick-add', kind: 'child', added: k ? [k] : [] });
     return k;
   }
 
-  /* Swap a person (with their partner and descendants) with the next
-     brother or sister on the left or right. */
+  /* A couple's children in birth order (left to right), with twins and
+     triplets kept together as one place in the order. */
+  function birthOrderPlaces(ps) {
+    const sibs = kidsOf(ps.id);
+    const root = new Map(sibs.map((k) => [k, k]));
+    const find = (k) => { while (root.get(k) !== k) k = root.get(k); return k; };
+    twinLinks.forEach((t) => { if (root.has(t.child1Id) && root.has(t.child2Id)) root.set(find(t.child1Id), find(t.child2Id)); });
+    const places = new Map();
+    sibs.forEach((k) => { const r = find(k); if (!places.has(r)) places.set(r, []); places.get(r).push(k); });
+    const left = (ids) => Math.min(...ids.map((k) => getPersonX(k)));
+    return Array.from(places.values()).sort((a, b) => left(a) - left(b));
+  }
+
+  /* Swap a person (with their partner, descendants and twin) with the next
+     brother or sister on the left or right, then lay the pedigree out again. */
   function moveInSibship(dir, id) {
     id = id || selectedPerson;
     const ps = parentPship(id);
     if (!ps) { status('This person has no brothers or sisters in the pedigree'); return; }
-    const sibs = kidsOf(ps.id).sort((a, b) => getPersonX(a) - getPersonX(b));
-    const i = sibs.indexOf(id);
+    const places = birthOrderPlaces(ps);
+    const i = places.findIndex((pl) => pl.includes(id));
     const j = i + (dir < 0 ? -1 : 1);
-    if (j < 0 || j >= sibs.length) { status(dir < 0 ? 'Already the oldest (furthest left)' : 'Already the youngest (furthest right)'); return; }
-    const leftId = dir < 0 ? sibs[j] : id;
-    const rightId = dir < 0 ? id : sibs[j];
+    if (i < 0 || j < 0 || j >= places.length) { status(dir < 0 ? 'Already the oldest (furthest left)' : 'Already the youngest (furthest right)'); return; }
+    const leftPlace = dir < 0 ? places[j] : places[i];
+    const rightPlace = dir < 0 ? places[i] : places[j];
+    const spot = screenSpot(id);
     group(() => {
-      const A = getDefaultChildBlock(leftId, ps.id);
-      const B = getDefaultChildBlock(rightId, ps.id);
+      let A = new Set(), B = new Set();
+      leftPlace.forEach((k) => getDefaultChildBlock(k, ps.id).forEach((x) => A.add(x)));
+      rightPlace.forEach((k) => getDefaultChildBlock(k, ps.id).forEach((x) => B.add(x)));
+      if (setsIntersect(A, B)) { A = new Set(leftPlace); B = new Set(rightPlace); }
       const a = getIdsBounds(A), b = getIdsBounds(B);
       if (!a || !b) return;
       const gap = Math.max(DEFAULT_SNAP_GAP, b.left - a.right);
-      const dxB = a.left - b.left;
-      const dxA = (a.left + (b.right - b.left) + gap) - a.left;
-      moveDefaultIds(B, dxB, 0);
-      moveDefaultIds(A, dxA, 0);
+      moveDefaultIds(B, a.left - b.left, 0);
+      moveDefaultIds(A, (b.right - b.left) + gap, 0);
       alignConnectedPersons();
-    });
+    }, { tidy: true });
+    holdOnScreen(id, spot);
     selectPerson(id);
     status('Order of brothers and sisters changed');
   }
@@ -474,7 +517,7 @@
     const ct = (p && p.centerText) || '';
     $('ctNumber').value = /^(\d{1,2}|n|S)$/.test(ct) ? ct : '';
     $('ctNumberBtn').classList.toggle('active', /^(\d{1,2}|n|S)$/.test(ct));
-    const hasSibs = !!(p && parentPship(p.id) && kidsOf(parentPship(p.id).id).length > 1);
+    const hasSibs = !!(p && parentPship(p.id) && birthOrderPlaces(parentPship(p.id)).length > 1);
     moveRow.hidden = !hasSibs;
     syncInspector();
   };

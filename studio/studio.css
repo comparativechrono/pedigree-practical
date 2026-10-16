@@ -200,6 +200,7 @@ body.readonly .st-bar, body.readonly .inspector { display: none !important; }
 /* connections */
 .conn-hit { pointer-events: stroke; cursor: pointer; }
 .partnership-line.highlighted { stroke: var(--accent) !important; stroke-width: 4 !important; filter: drop-shadow(0 0 6px var(--accent)) drop-shadow(0 0 12px var(--accent)); }
+.partnership-line.highlighted + .partnership-route { stroke: var(--accent); stroke-width: 4; filter: drop-shadow(0 0 6px var(--accent)) drop-shadow(0 0 12px var(--accent)); }
 .child-link-highlighted { stroke: var(--accent) !important; stroke-width: 4 !important; filter: drop-shadow(0 0 6px var(--accent)) drop-shadow(0 0 12px var(--accent)); }
 .link-delete-btn { position: absolute; width: 22px; height: 22px; border-radius: 50%; background: var(--danger); color: #fff; border: 2px solid #fff; font-size: 13px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 20; pointer-events: auto; box-shadow: 0 1px 4px rgba(0,0,0,0.2); transform: translate(-50%, -50%); }
 
