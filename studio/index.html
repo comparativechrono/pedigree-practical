@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Pedigree Studio – practical edition</title>
+<meta name="description" content="Draw clinical pedigrees with standard symbols. Pedigree Studio runs in your browser and sends nothing anywhere.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2310263a'/%3E%3Cpath d='M7 11h7M18 11h0' stroke='%23fff' stroke-width='2'/%3E%3Crect x='4' y='7' width='7' height='7' fill='none' stroke='%23fff' stroke-width='2'/%3E%3Ccircle cx='21.5' cy='10.5' r='3.6' fill='%233fb7a0'/%3E%3Cpath d='M16 11v7M9 18h14M9 18v4M23 18v4' stroke='%23fff' stroke-width='2' fill='none'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="studio.css">
+</head>
+<body>
+
+<!-- ============================ TOOLBAR ============================ -->
+<header class="st-bar" role="toolbar" aria-label="Pedigree tools">
+  <div class="st-group" aria-label="Add a person">
+    <span class="st-glabel">Add</span>
+    <button class="st-btn add-btn" type="button" data-add="male" title="Add a male (square)"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16"/></svg><span>Male</span></button>
+    <button class="st-btn add-btn" type="button" data-add="female" title="Add a female (circle)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/></svg><span>Female</span></button>
+    <button class="st-btn add-btn" type="button" data-add="unknown" title="Add a person of unknown or unspecified sex (diamond)"><svg viewBox="0 0 24 24"><path d="M12 2.5L21.5 12 12 21.5 2.5 12z"/></svg><span>Unknown</span></button>
+    <button class="st-btn add-btn" type="button" data-add="miscarriage" title="Add a pregnancy loss (triangle)"><svg viewBox="0 0 24 24"><path d="M12 5l8.5 14h-17z"/></svg><span>Loss</span></button>
+    <button class="st-btn" type="button" id="moreAddBtn" aria-haspopup="true" title="More symbols: no children, infertility, adoption, text label"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg><span>More</span></button>
+  </div>
+
+  <div class="st-group" aria-label="Connect people">
+    <span class="st-glabel">Connect</span>
+    <button class="st-btn tool-btn" type="button" id="tool-partner" onclick="setTool('partner')" title="Partner: click two people to join them with a relationship line"><svg viewBox="0 0 24 24"><rect x="2" y="8" width="7" height="8"/><circle cx="18.5" cy="12" r="4"/><path d="M9 12h5.5"/></svg><span>Partners</span></button>
+    <button class="st-btn tool-btn" type="button" id="tool-child" onclick="setTool('child')" title="Child: click a relationship line, then the child"><svg viewBox="0 0 24 24"><path d="M12 3v8M5 11h14M5 11v6M19 11v6"/><rect x="2.5" y="17" width="5" height="5"/><circle cx="19" cy="19.5" r="2.6"/></svg><span>Child</span></button>
+    <button class="st-btn tool-btn" type="button" id="tool-twin" onclick="setTool('twin')" title="Twins: click two children of the same couple"><svg viewBox="0 0 24 24"><path d="M12 3v6M12 9l-6 9M12 9l6 9M8.6 14h6.8"/></svg><span>Twins</span></button>
+  </div>
+
+  <div class="st-group" aria-label="Pointer">
+    <button class="st-btn tool-btn active" type="button" id="tool-move" onclick="setTool('move')" title="Select and move (Esc)"><svg viewBox="0 0 24 24"><path d="M5 3l12 8-5.5 1.2L15 19l-2.6 1.4-3.6-6.9L5 17z"/></svg><span>Select</span></button>
+    <button class="st-btn tool-btn" type="button" id="tool-draw" onclick="setTool('draw')" title="Draw freehand on the canvas"><svg viewBox="0 0 24 24"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg><span>Draw</span></button>
+  </div>
+
+  <div class="st-group" aria-label="Undo and redo">
+    <button class="st-btn undo-btn" type="button" onclick="undo()" title="Undo (Ctrl+Z)" disabled><svg viewBox="0 0 24 24"><path d="M3 10h10a5 5 0 0 1 0 10H9"/><path d="M7 14l-4-4 4-4"/></svg></button>
+    <button class="st-btn redo-btn" type="button" onclick="redo()" title="Redo (Ctrl+Y)" disabled><svg viewBox="0 0 24 24"><path d="M21 10H11a5 5 0 0 0 0 10h4"/><path d="M17 14l4-4-4-4"/></svg></button>
+  </div>
+
+  <div class="st-spacer"></div>
+
+  <div class="st-group st-right" aria-label="View and file">
+    <button class="st-btn" type="button" id="keyBtn" title="Show or hide the colour key (legend)"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="5" height="4"/><rect x="3" y="10" width="5" height="4"/><rect x="3" y="16" width="5" height="4"/><path d="M11 6h10M11 12h10M11 18h10"/></svg><span>Key</span></button>
+    <button class="st-btn" type="button" id="tidyBtn" title="Tidy the layout automatically (you can undo it)"><svg viewBox="0 0 24 24"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/></svg><span>Tidy</span></button>
+    <button class="st-btn" type="button" id="fileBtn" aria-haspopup="true" title="Export, save, open and settings"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg><span>File</span></button>
+    <button class="st-btn" type="button" id="helpBtn" title="How to use Pedigree Studio"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.2 9a2.9 2.9 0 0 1 5.6 1c0 2-2.8 2.6-2.8 4M12 17.5h.01"/></svg></button>
+  </div>
+</header>
+
+<!-- "More" menu -->
+<div class="st-pop" id="moreMenu" hidden role="menu">
+  <button type="button" role="menuitem" data-add="no-offspring"><svg viewBox="0 0 40 24"><path d="M20 2v12M8 14h24"/></svg>No children (by choice or unknown)</button>
+  <button type="button" role="menuitem" data-add="infertile"><svg viewBox="0 0 40 24"><path d="M20 2v10M8 12h24M8 18h24"/></svg>No children (infertility)</button>
+  <button type="button" role="menuitem" data-add="adopted-male"><svg viewBox="0 0 40 24"><path d="M10 3H6v18h4M30 3h4v18h-4"/><rect x="13" y="6" width="14" height="12"/></svg>Adopted male</button>
+  <button type="button" role="menuitem" data-add="adopted-female"><svg viewBox="0 0 40 24"><path d="M10 3H6v18h4M30 3h4v18h-4"/><circle cx="20" cy="12" r="6.5"/></svg>Adopted female</button>
+  <button type="button" role="menuitem" data-add="adopted-unknown"><svg viewBox="0 0 40 24"><path d="M10 3H6v18h4M30 3h4v18h-4"/><path d="M20 5l7 7-7 7-7-7z"/></svg>Adopted, sex unknown</button>
+  <hr>
+  <button type="button" role="menuitem" data-add="label"><svg viewBox="0 0 40 24"><path d="M12 6V4h16v2M17 20h6M20 4v16"/></svg>Text label (e.g. date and your name)</button>
+</div>
+
+<!-- File & settings menu -->
+<div class="st-pop st-pop-wide" id="fileMenu" hidden>
+  <div class="pop-sec">
+    <div class="pop-h">Export</div>
+    <div class="pop-row">
+      <button class="pbtn" type="button" onclick="saveAsImage()">Picture (PNG)</button>
+      <button class="pbtn" type="button" onclick="saveAsSVG()">Vector (SVG)</button>
+    </div>
+    <div class="pop-row">
+      <button class="pbtn" type="button" onclick="exportJSON()">Save pedigree file</button>
+      <button class="pbtn" type="button" onclick="document.getElementById('importFile').click()">Open pedigree file</button>
+    </div>
+    <p class="pop-note">A pedigree file (<code>.json</code>) can be opened again here or in <a href="https://pedigreestudio.xyz/" target="_blank" rel="noopener">Pedigree Studio</a>.</p>
+  </div>
+  <div class="pop-sec">
+    <div class="pop-h">Numbering</div>
+    <div class="seg5">
+      <button class="pbtn active" type="button" data-nm="numbers" onclick="setNumberingMode('numbers')">I-1</button>
+      <button class="pbtn" type="button" data-nm="letters" onclick="setNumberingMode('letters')">I-A</button>
+      <button class="pbtn" type="button" data-nm="lettersonly" onclick="setNumberingMode('lettersonly')">A, B</button>
+      <button class="pbtn" type="button" data-nm="freetext" onclick="setNumberingMode('freetext')">Own</button>
+      <button class="pbtn" type="button" data-nm="off" onclick="setNumberingMode('off')">Off</button>
+    </div>
+  </div>
+  <div class="pop-sec">
+    <div class="pop-h">Moving people</div>
+    <div class="toggle-row">
+      <label for="individualMoveToggle">Move one person at a time</label>
+      <button class="toggle-switch" type="button" id="individualMoveToggle" onclick="toggleIndividualMove()" aria-label="Move one person at a time"></button>
+    </div>
+    <p class="pop-note">Off: dragging someone moves their whole connected family. On: only that person moves.</p>
+  </div>
+  <div class="pop-sec">
+    <div class="pop-h">Spacing</div>
+    <label class="slider-l">Gap between partners: <span id="partnerGapLabel">2×</span>
+      <input type="range" min="1" max="5" step="0.5" value="2" id="partnerGapSlider" oninput="setPartnerGap(this.value)"></label>
+    <label class="slider-l">Height of each generation: <span id="childHeightLabel">2.5×</span>
+      <input type="range" min="2" max="6" step="0.5" value="2.5" id="childHeightSlider" oninput="setChildHeight(this.value)"></label>
+  </div>
+  <div class="pop-sec">
+    <div class="pop-h">Text labels</div>
+    <div class="pop-row">
+      <span class="pop-note" style="margin:0">Size</span>
+      <button class="size-btn" type="button" onclick="changeLabelSize(-2)">−</button>
+      <span id="labelSizeDisplay">14px</span>
+      <button class="size-btn" type="button" onclick="changeLabelSize(2)">+</button>
+      <button class="pbtn" type="button" id="labelBorderToggle" onclick="toggleLabelBorder()">Border Box: Off</button>
+    </div>
+  </div>
+  <div class="pop-sec">
+    <button class="pbtn danger" type="button" onclick="clearAll()">Clear the whole canvas</button>
+  </div>
+</div>
+<input type="file" id="importFile" accept=".json,application/json" hidden onchange="importJSON(event)">
+
+<!-- ============================ CANVAS ============================ -->
+<main class="canvas-area" id="canvasArea" aria-label="Pedigree drawing area">
+  <div id="canvas">
+    <svg id="lines-layer" xmlns="http://www.w3.org/2000/svg"></svg>
+    <svg id="draw-layer" xmlns="http://www.w3.org/2000/svg"></svg>
+  </div>
+  <div class="mode-banner" id="modeBanner" onclick="this.classList.remove('visible')"></div>
+  <div class="pick-banner" id="pickBanner" hidden><span id="pickText"></span> <b id="pickCount"></b></div>
+  <div class="empty-hint" id="emptyHint"><div>
+    <svg viewBox="0 0 120 70" aria-hidden="true"><rect x="10" y="8" width="22" height="22"/><circle cx="98" cy="19" r="11"/><path d="M32 19h55M60 19v20M30 39h60M30 39v8M90 39v8"/><rect x="19" y="47" width="22" height="22"/><circle cx="90" cy="58" r="11"/></svg>
+    <p><b>Start with the person in front of you.</b><br>Click <b>Male</b> or <b>Female</b> above, then build out from them with <b>Add a relative</b>.</p>
+  </div></div>
+  <div class="status-bar" id="statusBar" role="status" aria-live="polite">Ready</div>
+  <div class="zoom-controls">
+    <button class="zoom-btn" type="button" onclick="doZoom(-0.1)" title="Zoom out" aria-label="Zoom out">−</button>
+    <div class="zoom-label" id="zoomLabel">100%</div>
+    <button class="zoom-btn" type="button" onclick="doZoom(0.1)" title="Zoom in" aria-label="Zoom in">+</button>
+    <button class="zoom-btn" type="button" onclick="fitToView()" title="Fit the pedigree to the window" aria-label="Fit to window"><svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg></button>
+  </div>
+
+  <!-- ====================== INSPECTOR (contextual) ====================== -->
+  <aside class="inspector" id="inspector" aria-label="Properties of the selection">
+    <button class="insp-close" type="button" id="inspClose" title="Close (Esc)" aria-label="Close">×</button>
+
+    <!-- Person -->
+    <section class="panel-section props-panel" id="propsPanel">
+      <h3 class="insp-h">Person <span class="insp-num" id="inspNum"></span></h3>
+      <div class="qa">
+        <div class="lbl">Add a relative</div>
+        <div class="qa-grid">
+          <button class="qa-btn" type="button" data-qa="partner" title="Add a partner beside this person"><svg viewBox="0 0 24 24"><rect x="2" y="8" width="7" height="8"/><circle cx="18.5" cy="12" r="4"/><path d="M9 12h5.5"/></svg>Partner</button>
+          <button class="qa-btn" type="button" data-qa="son" title="Add a son"><svg viewBox="0 0 24 24"><path d="M12 2v7"/><rect x="7" y="10" width="10" height="10"/></svg>Son</button>
+          <button class="qa-btn" type="button" data-qa="daughter" title="Add a daughter"><svg viewBox="0 0 24 24"><path d="M12 2v7"/><circle cx="12" cy="15" r="5.5"/></svg>Daughter</button>
+          <button class="qa-btn" type="button" data-qa="parents" title="Add a father and mother above this person"><svg viewBox="0 0 24 24"><rect x="2" y="2" width="6" height="6"/><circle cx="19" cy="5" r="3.2"/><path d="M8 5h7.8M12 5v9"/><rect x="9" y="15" width="6" height="6"/></svg>Parents</button>
+          <button class="qa-btn" type="button" data-qa="brother" title="Add a brother (shares both parents)"><svg viewBox="0 0 24 24"><path d="M6 6V3h12v3"/><rect x="2" y="7" width="8" height="8"/><rect x="14" y="7" width="8" height="8"/></svg>Brother</button>
+          <button class="qa-btn" type="button" data-qa="sister" title="Add a sister (shares both parents)"><svg viewBox="0 0 24 24"><path d="M6 6V3h12v3"/><rect x="2" y="7" width="8" height="8"/><circle cx="18" cy="11" r="4"/></svg>Sister</button>
+        </div>
+      </div>
+
+      <label class="lbl" for="personText">Notes under the symbol</label>
+      <textarea id="personText" placeholder="e.g. Kofi&#10;d. 28, sudden death&#10;HCM on post-mortem" oninput="updatePersonText()" onfocus="pushUndo()"></textarea>
+
+      <div class="toggle-row">
+        <label onclick="toggleDeceased()">Deceased</label>
+        <button class="toggle-switch" type="button" id="deceasedToggle" onclick="toggleDeceased()" aria-label="Deceased"></button>
+      </div>
+      <div class="toggle-row">
+        <label onclick="toggleProband()">Proband (arrow)</label>
+        <button class="toggle-switch" type="button" id="probandToggle" onclick="toggleProband()" aria-label="Proband"></button>
+      </div>
+
+      <div class="lbl">Shading (affected)</div>
+      <div class="fill-mode-row">
+        <button class="fill-mode-btn active" type="button" data-mode="none" onclick="setFillMode('none')">None</button>
+        <button class="fill-mode-btn" type="button" data-mode="solid" onclick="setFillMode('solid')">Full</button>
+        <button class="fill-mode-btn" type="button" data-mode="half" onclick="setFillMode('half')">Half</button>
+        <button class="fill-mode-btn" type="button" data-mode="quartered" onclick="setFillMode('quartered')">Quarters</button>
+        <button class="fill-mode-btn" type="button" data-mode="shading" onclick="setFillMode('shading')">Pattern</button>
+      </div>
+      <div id="solidFillUI" style="display:none;">
+        <div class="fill-colors" id="solidColorPicker"></div>
+      </div>
+      <div id="halfFillUI" style="display:none;">
+        <div class="grid-row">
+          <div class="half-grid" id="halfGrid">
+            <div class="half-cell" data-h="0" onclick="selectHalf(0)" style="background:#fff;">L</div>
+            <div class="half-cell" data-h="1" onclick="selectHalf(1)" style="background:#fff;">R</div>
+          </div>
+          <span class="quarter-label" id="halfLabel">Click a half, then pick a colour</span>
+        </div>
+        <div class="fill-colors" id="halfColorPicker"></div>
+      </div>
+      <div id="quarteredFillUI" style="display:none;">
+        <div class="grid-row">
+          <div class="quarter-grid" id="quarterGrid">
+            <div class="quarter-cell" data-q="3" onclick="selectQuarter(3)" style="background:#fff;">TL</div>
+            <div class="quarter-cell" data-q="0" onclick="selectQuarter(0)" style="background:#fff;">TR</div>
+            <div class="quarter-cell" data-q="2" onclick="selectQuarter(2)" style="background:#fff;">BL</div>
+            <div class="quarter-cell" data-q="1" onclick="selectQuarter(1)" style="background:#fff;">BR</div>
+          </div>
+          <span class="quarter-label" id="quarterLabel">Click a quarter, then pick a colour</span>
+        </div>
+        <div class="fill-colors" id="quarterColorPicker"></div>
+      </div>
+      <div id="shadingFillUI" style="display:none;">
+        <div class="shading-option-row">
+          <button class="shading-option-btn active" type="button" data-spattern="stripes" onclick="setShadingPattern('stripes')">Stripes</button>
+          <button class="shading-option-btn" type="button" data-spattern="dots" onclick="setShadingPattern('dots')">Dots</button>
+        </div>
+        <div class="shading-option-row">
+          <button class="shading-option-btn active" type="button" data-scoverage="full" onclick="setShadingCoverage('full')">Whole</button>
+          <button class="shading-option-btn" type="button" data-scoverage="half-left" onclick="setShadingCoverage('half-left')">Left half</button>
+          <button class="shading-option-btn" type="button" data-scoverage="half-right" onclick="setShadingCoverage('half-right')">Right half</button>
+        </div>
+      </div>
+
+      <div class="lbl">Inside the symbol</div>
+      <div class="ct-row">
+        <button class="ct-btn" type="button" data-ct="" onclick="setCenterText('')" title="Nothing inside">None</button>
+        <button class="ct-btn" type="button" data-ct="dot" onclick="setCenterText('dot')" title="Carrier: carries the variant but is unaffected">● Carrier</button>
+        <button class="ct-btn" type="button" data-ct="P" onclick="setCenterText('P')" title="P: a current pregnancy">P</button>
+        <button class="ct-btn" type="button" data-ct="D" onclick="setCenterText('D')" title="D: egg or sperm donor">D</button>
+        <span class="ct-num" title="Several people in one symbol: type how many (or n if not known)">
+          <input type="text" id="ctNumber" maxlength="2" placeholder="3" aria-label="Number of people in this symbol"><button class="ct-btn" type="button" id="ctNumberBtn">Number</button>
+        </span>
+      </div>
+
+      <div class="lbl">Change symbol</div>
+      <div class="shape-row">
+        <button class="sh-btn" type="button" onclick="changeShape('male')" title="Male">□</button>
+        <button class="sh-btn" type="button" onclick="changeShape('female')" title="Female">○</button>
+        <button class="sh-btn" type="button" onclick="changeShape('unknown')" title="Unknown or unspecified sex">◇</button>
+        <button class="sh-btn" type="button" onclick="changeShape('miscarriage')" title="Pregnancy loss">△</button>
+        <button class="sh-btn" type="button" onclick="changeShape('adopted-male')" title="Adopted male">[□]</button>
+        <button class="sh-btn" type="button" onclick="changeShape('adopted-female')" title="Adopted female">[○]</button>
+        <button class="sh-btn" type="button" onclick="changeShape('adopted-unknown')" title="Adopted, sex unknown">[◇]</button>
+      </div>
+
+      <div id="miscarriageSexUI" style="display:none;">
+        <div class="lbl">Sex of the pregnancy, if known</div>
+        <div class="seg3">
+          <button class="pbtn" type="button" data-ms="unknown" onclick="setMiscarriageSex('unknown')">Unknown</button>
+          <button class="pbtn" type="button" data-ms="male" onclick="setMiscarriageSex('male')">Male</button>
+          <button class="pbtn" type="button" data-ms="female" onclick="setMiscarriageSex('female')">Female</button>
+        </div>
+      </div>
+
+      <details class="insp-more">
+        <summary>More</summary>
+        <div class="toggle-row">
+          <label onclick="toggleNoSnap()">Free position (no snapping)</label>
+          <button class="toggle-switch" type="button" id="noSnapToggle" onclick="toggleNoSnap()" aria-label="Free position"></button>
+        </div>
+      </details>
+      <button class="pbtn danger wide" type="button" id="deletePersonBtn">Delete this person</button>
+    </section>
+
+    <!-- Partnership -->
+    <section class="panel-section" id="partnershipPropsPanel">
+      <h3 class="insp-h">Relationship line</h3>
+      <div class="seg2">
+        <button class="pbtn active" type="button" data-pt="normal" onclick="setPartnershipType('normal')">Partners</button>
+        <button class="pbtn" type="button" data-pt="consanguineous" onclick="setPartnershipType('consanguineous')">Related (consanguineous)</button>
+        <button class="pbtn" type="button" data-pt="separated" onclick="setPartnershipType('separated')">Separated</button>
+        <button class="pbtn" type="button" data-pt="consanguineous-separated" onclick="setPartnershipType('consanguineous-separated')">Related, separated</button>
+      </div>
+      <div class="qa">
+        <div class="lbl">Add a child of this couple</div>
+        <div class="qa-grid">
+          <button class="qa-btn" type="button" data-qp="male"><svg viewBox="0 0 24 24"><path d="M12 2v7"/><rect x="7" y="10" width="10" height="10"/></svg>Son</button>
+          <button class="qa-btn" type="button" data-qp="female"><svg viewBox="0 0 24 24"><path d="M12 2v7"/><circle cx="12" cy="15" r="5.5"/></svg>Daughter</button>
+          <button class="qa-btn" type="button" data-qp="unknown"><svg viewBox="0 0 24 24"><path d="M12 2v6"/><path d="M12 9l6 6-6 6-6-6z"/></svg>Unknown</button>
+        </div>
+      </div>
+      <button class="pbtn danger wide" type="button" onclick="deleteSelectedPartnership()">Delete this relationship line</button>
+    </section>
+
+    <!-- Child line -->
+    <section class="panel-section" id="childLinkPropsPanel">
+      <h3 class="insp-h">Line of descent</h3>
+      <div class="seg2">
+        <button class="pbtn active" type="button" data-cls="solid" onclick="setChildLineStyle('solid')">Solid (biological)</button>
+        <button class="pbtn" type="button" data-cls="dashed" onclick="setChildLineStyle('dashed')">Dashed (adopted in)</button>
+      </div>
+      <button class="pbtn danger wide" type="button" onclick="deleteSelectedChildLink()">Delete this line</button>
+    </section>
+
+    <!-- Several people -->
+    <section class="panel-section" id="multiSelectPanel">
+      <h3 class="insp-h">People selected <span class="multi-select-count" id="multiSelectCount"></span></h3>
+      <p class="pop-note">Shading changes apply to everyone selected.</p>
+      <div class="fill-mode-row">
+        <button class="fill-mode-btn" type="button" data-mmode="none" onclick="multiSetFillMode('none')">None</button>
+        <button class="fill-mode-btn" type="button" data-mmode="solid" onclick="multiSetFillMode('solid')">Full</button>
+        <button class="fill-mode-btn" type="button" data-mmode="half" onclick="multiSetFillMode('half')">Half</button>
+        <button class="fill-mode-btn" type="button" data-mmode="quartered" onclick="multiSetFillMode('quartered')">Quarters</button>
+        <button class="fill-mode-btn" type="button" data-mmode="shading" onclick="multiSetFillMode('shading')">Pattern</button>
+      </div>
+      <div id="multiSolidFillUI" style="display:none;"><div class="fill-colors" id="multiSolidColorPicker"></div></div>
+      <div id="multiHalfFillUI" style="display:none;">
+        <div class="grid-row">
+          <div class="half-grid" id="multiHalfGrid">
+            <div class="half-cell" data-mh="0" onclick="multiSelectHalf(0)" style="background:#fff;">L</div>
+            <div class="half-cell" data-mh="1" onclick="multiSelectHalf(1)" style="background:#fff;">R</div>
+          </div>
+          <span class="quarter-label" id="multiHalfLabel">Click a half, then pick a colour</span>
+        </div>
+        <div class="fill-colors" id="multiHalfColorPicker"></div>
+      </div>
+      <div id="multiQuarteredFillUI" style="display:none;">
+        <div class="grid-row">
+          <div class="quarter-grid" id="multiQuarterGrid">
+            <div class="quarter-cell" data-mq="3" onclick="multiSelectQuarter(3)" style="background:#fff;">TL</div>
+            <div class="quarter-cell" data-mq="0" onclick="multiSelectQuarter(0)" style="background:#fff;">TR</div>
+            <div class="quarter-cell" data-mq="2" onclick="multiSelectQuarter(2)" style="background:#fff;">BL</div>
+            <div class="quarter-cell" data-mq="1" onclick="multiSelectQuarter(1)" style="background:#fff;">BR</div>
+          </div>
+          <span class="quarter-label" id="multiQuarterLabel">Click a quarter, then pick a colour</span>
+        </div>
+        <div class="fill-colors" id="multiQuarterColorPicker"></div>
+      </div>
+      <div id="multiShadingFillUI" style="display:none;">
+        <div class="shading-option-row">
+          <button class="shading-option-btn" type="button" data-mspattern="stripes" onclick="multiSetShadingPattern('stripes')">Stripes</button>
+          <button class="shading-option-btn" type="button" data-mspattern="dots" onclick="multiSetShadingPattern('dots')">Dots</button>
+        </div>
+        <div class="shading-option-row">
+          <button class="shading-option-btn" type="button" data-mscoverage="full" onclick="multiSetShadingCoverage('full')">Whole</button>
+          <button class="shading-option-btn" type="button" data-mscoverage="half-left" onclick="multiSetShadingCoverage('half-left')">Left half</button>
+          <button class="shading-option-btn" type="button" data-mscoverage="half-right" onclick="multiSetShadingCoverage('half-right')">Right half</button>
+        </div>
+      </div>
+      <button class="pbtn danger wide" type="button" onclick="deleteMultiSelected()">Delete everyone selected</button>
+    </section>
+
+    <section class="panel-section" id="multiPartnershipPanel">
+      <h3 class="insp-h">Relationship lines selected <span class="multi-select-count" id="multiPartnershipCount"></span></h3>
+      <div class="seg2">
+        <button class="pbtn" type="button" data-mpt="normal" onclick="multiSetPartnershipType('normal')">Partners</button>
+        <button class="pbtn" type="button" data-mpt="consanguineous" onclick="multiSetPartnershipType('consanguineous')">Related</button>
+        <button class="pbtn" type="button" data-mpt="separated" onclick="multiSetPartnershipType('separated')">Separated</button>
+        <button class="pbtn" type="button" data-mpt="consanguineous-separated" onclick="multiSetPartnershipType('consanguineous-separated')">Related, separated</button>
+      </div>
+      <button class="pbtn danger wide" type="button" onclick="deleteMultiSelectedPartnerships()">Delete the selected lines</button>
+    </section>
+
+    <section class="panel-section" id="multiChildLinkPanel">
+      <h3 class="insp-h">Lines of descent selected <span class="multi-select-count" id="multiChildLinkCount"></span></h3>
+      <div class="seg2">
+        <button class="pbtn" type="button" data-mcls="solid" onclick="multiSetChildLineStyle('solid')">Solid (biological)</button>
+        <button class="pbtn" type="button" data-mcls="dashed" onclick="multiSetChildLineStyle('dashed')">Dashed (adopted in)</button>
+      </div>
+      <button class="pbtn danger wide" type="button" onclick="deleteMultiSelectedChildLinks()">Delete the selected lines</button>
+    </section>
+
+    <!-- Twins (shown while the twin tool is active) -->
+    <section class="panel-section" id="twinPanel">
+      <h3 class="insp-h">Twins</h3>
+      <p class="pop-note">Click two children of the same couple.</p>
+      <div class="seg2">
+        <button class="pbtn active" type="button" data-tt="identical" onclick="setTwinType('identical')">Identical (monozygotic)</button>
+        <button class="pbtn" type="button" data-tt="nonidentical" onclick="setTwinType('nonidentical')">Non-identical (dizygotic)</button>
+      </div>
+    </section>
+
+    <!-- Draw -->
+    <section class="panel-section" id="drawPanel" style="display:none;">
+      <h3 class="insp-h">Draw</h3>
+      <div class="seg2">
+        <button class="pbtn active" type="button" id="drawModePen" onclick="setDrawMode('pen')">Pen</button>
+        <button class="pbtn" type="button" id="drawModeEraser" onclick="setDrawMode('eraser')">Eraser</button>
+      </div>
+      <div id="drawPenSettings">
+        <div class="lbl">Colour</div>
+        <div class="draw-settings-row" id="drawColorPicker"></div>
+        <label class="slider-l">Line width: <span id="drawWidthLabel">2px</span>
+          <input type="range" min="1" max="12" step="1" value="2" id="drawWidthSlider" oninput="setDrawWidth(this.value)"></label>
+      </div>
+      <div id="drawEraserSettings" style="display:none;"><p class="pop-note">Tap a drawn line to remove it. Symbols and relationship lines are not affected.</p></div>
+      <button class="pbtn wide" type="button" onclick="clearDrawings()">Clear all drawing</button>
+    </section>
+  </aside>
+</main>
+
+<!-- Help -->
+<div class="help-back" id="helpOverlay" hidden>
+  <div class="help-card" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+    <button class="insp-close" type="button" id="helpClose" aria-label="Close">×</button>
+    <h2 id="helpTitle">Drawing with Pedigree Studio</h2>
+    <ol class="help-steps">
+      <li><b>Add the first person</b> with <b>Male</b>, <b>Female</b> or <b>Unknown</b> on the toolbar. This is usually the proband: turn on <b>Proband</b> in the panel that opens.</li>
+      <li><b>Build out from them.</b> With a person selected, <b>Add a relative</b> adds a partner, children, parents or brothers and sisters, already joined up.</li>
+      <li><b>Join people yourself</b> with the tools under <b>Connect</b>. <b>Partners</b>: click two people. <b>Child</b>: click a relationship line, then the child. <b>Twins</b>: click two children of the same couple.</li>
+      <li><b>Describe each person</b> in the panel: notes under the symbol (name, age, diagnoses with age at diagnosis), deceased, shading for affected, and symbols inside (carrier dot, P for pregnancy, a number for several people).</li>
+      <li><b>Click a line</b> to change it: relationship lines can be consanguineous or separated, and a line of descent can be dashed for adoption.</li>
+      <li><b>Drag</b> to move people. Dragging moves the whole connected family unless you switch on <b>Move one person at a time</b> under <b>File</b>. Drag the background to pan; scroll or pinch to zoom; <b>Fit</b> brings everything into view.</li>
+    </ol>
+    <table class="help-keys">
+      <tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd></td><td>Undo / redo</td></tr>
+      <tr><td><kbd>Delete</kbd></td><td>Delete what is selected</td></tr>
+      <tr><td><kbd>Shift</kbd> + click</td><td>Select several people or lines</td></tr>
+      <tr><td><kbd>Esc</kbd></td><td>Cancel the current tool and clear the selection</td></tr>
+    </table>
+    <p class="pop-note">Pedigree Studio runs entirely in your browser. Nothing you draw is sent anywhere.</p>
+  </div>
+</div>
+
+<!-- Elements the engine expects that the practical edition does not show -->
+<div hidden aria-hidden="true">
+  <div id="splashOverlay" class="hidden"></div>
+  <div id="sidePanel"></div><div id="panelOverlay"></div>
+  <div id="extraShapes" style="display:flex"></div><button id="extraShapesToggle" type="button"></button>
+  <div id="configSection"></div><button id="configToggle" type="button"></button>
+</div>
+
+<script src="engine.js"></script>
+<script src="practical.js"></script>
+</body>
+</html>

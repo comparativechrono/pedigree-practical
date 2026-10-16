@@ -1,0 +1,843 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pedigrees: drawing, inheritance and ethics – a practical</title>
+<meta name="description" content="A practical in taking a family history and drawing it as a pedigree, recognising patterns of inheritance, working out genetic risks and thinking through ethical dilemmas, with the Pedigree Studio drawing tool built in.">
+<meta name="color-scheme" content="only light">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2310263a'/%3E%3Crect x='5' y='6' width='7' height='7' fill='none' stroke='%23fff' stroke-width='2'/%3E%3Ccircle cx='23.5' cy='9.5' r='3.6' fill='%233fb7a0'/%3E%3Cpath d='M12 9.5h7.9M16 9.5v7M8.5 16.5h15M8.5 16.5v4M23.5 16.5v4' stroke='%23fff' stroke-width='2' fill='none'/%3E%3Crect x='5' y='21' width='7' height='6' fill='%23f28e2b'/%3E%3Ccircle cx='23.5' cy='24' r='3.2' fill='none' stroke='%23fff' stroke-width='2'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/css/app.css">
+</head>
+<body>
+<div class="app">
+
+  <!-- ============================ HEADER ============================ -->
+  <header class="topbar">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#17344d"/><rect x="5" y="6" width="7" height="7" fill="none" stroke="#fff" stroke-width="2"/><circle cx="23.5" cy="9.5" r="3.6" fill="#3fb7a0"/><path d="M12 9.5h7.9M16 9.5v7M8.5 16.5h15M8.5 16.5v4M23.5 16.5v4" stroke="#fff" stroke-width="2" fill="none"/><rect x="5" y="21" width="7" height="6" fill="#f28e2b"/><circle cx="23.5" cy="24" r="3.2" fill="none" stroke="#fff" stroke-width="2"/></svg>
+      <div>
+        <div class="brand-title">Pedigrees: drawing, inheritance and ethics</div>
+        <div class="brand-sub">Genomics practical · family history, inheritance and ethics</div>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <div class="progress-wrap" title="Activity steps and questions completed (saved in this browser)"><span class="progress-label">0% done</span><div class="progress"><i></i></div></div>
+    <button class="btn" id="answersBtn" type="button"><svg class="ic" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg><span>My answers</span></button>
+  </header>
+
+  <div class="main">
+    <!-- ============================ TUTORIAL ============================ -->
+    <aside class="tut" aria-label="Tutorial">
+      <nav class="ch-nav" aria-label="Chapters"></nav>
+
+<!-- =====================================================================
+     CHAPTER 0 · START HERE
+     ===================================================================== -->
+<section class="chapter" id="start" data-num="0" data-title="Start here" data-bench="pedigree" data-ped="practice">
+  <h1>Pedigrees: from a family history to genetic risk</h1>
+  <p class="lede">A pedigree is a family tree drawn with standard symbols, so that anyone in a clinical genetics team can read it. In this practical you will take family histories from two patients and draw them, use pedigrees to recognise how a condition is being inherited and to work out risks, and think through some of the ethical problems that arise because genetic information is shared by a whole family.</p>
+  <div class="meta-row"><span class="pill time">About 3 hours</span><span class="pill">Nothing to install</span><span class="pill">Nothing you draw leaves your computer</span></div>
+
+  <div class="callout info">
+    <div class="co-t">How this page works</div>
+    <p>The instructions and questions are on the <b>left</b>. On the <b>right</b> is the workbench. Its <b>Pedigree</b> tab is <b>Pedigree Studio</b>, a tool for drawing clinical pedigrees, and its <b>Inheritance</b> tab shows what children can inherit from their parents.</p>
+    <ul>
+      <li>Buttons like <button class="do showme" type="button" data-studio="fit">this one</button> do a step for you. Try each step yourself first, and use them if you get stuck.</li>
+      <li>Activity steps tick themselves when the page sees you do them. You can tick them yourself as well.</li>
+      <li>Everything is saved in this browser as you go: your answers, your interviews and your pedigrees. <b>My answers</b> (top right) downloads them all, with pictures of your pedigrees.</li>
+    </ul>
+  </div>
+
+  <div class="name-field"><label for="studentName"><b>Your name</b> (optional – it goes on your downloaded answers):</label> <input id="studentName" type="text" data-student-name autocomplete="name"></div>
+
+  <h2>Warm-up: your first pedigree</h2>
+  <p>The workbench shows <b>My practice pedigree</b>, which starts empty. Pedigrees are built outwards from one person, so start with one person and add their family around them.</p>
+  <div class="activity" data-ped="practice">
+    <div class="act-t">Activity 0 · A small family <button class="btn small" type="button" data-ped="practice">Open my practice pedigree</button></div>
+    <ol class="steps">
+      <li data-task="s-man" data-check="has:male">Click <b>Male</b> on the Studio's toolbar. A square appears and is selected, and a panel opens on the right of the drawing. <button class="do showme" type="button" data-studio="add:male">show me</button></li>
+      <li data-task="s-partner" data-check="couple:any">In the panel, under <b>Add a relative</b>, click <b>Partner</b>. A circle appears beside him, joined by a relationship line. <button class="do showme" type="button" data-studio="qa:partner">show me</button></li>
+      <li data-task="s-kids" data-check="children:2">Click <b>Daughter</b> and then <b>Son</b>. Their children hang from the relationship line, oldest on the left. <button class="do showme" type="button" data-studio="qa:daughter; qa:son">show me</button></li>
+      <li data-task="s-parents" data-check="generations:3">Click the daughter to select her, then click <b>Parents</b>... she already has them, so the Studio says so. Select the man instead and add <b>his</b> parents. You now have three generations. <button class="do showme" type="button" data-studio="qa:parents">show me</button></li>
+      <li data-task="s-drag">Drag someone. Their whole family moves with them. Press <span class="kbd">Ctrl</span>+<span class="kbd">Z</span> (<span class="kbd">⌘</span>+<span class="kbd">Z</span> on a Mac) to undo it. Drag the empty background to move around, and scroll or pinch to zoom.</li>
+      <li data-task="s-fit">Click the <b>fit</b> button at the bottom right of the drawing to bring everything into view. <button class="do showme" type="button" data-studio="fit">show me</button></li>
+    </ol>
+    <p class="hint">The <b>?</b> at the right of the Studio's toolbar explains the rest of its controls. <b>Start again</b> above the drawing clears this pedigree if you want a fresh start.</p>
+  </div>
+
+  <h2>Plan for today</h2>
+  <table class="table">
+    <tr><th>Chapter</th><th>What you will do</th><th>Time</th></tr>
+    <tr><td><button class="goto" data-goto="why" type="button">1 · Why a pedigree?</button></td><td>Why clinicians take a family history, and what makes one stand out</td><td>10 min</td></tr>
+    <tr><td><button class="goto" data-goto="symbols" type="button">2 · Symbols</button></td><td>Draw each standard symbol yourself, then read a pedigree someone else has drawn</td><td>25 min</td></tr>
+    <tr><td><button class="goto" data-goto="history" type="button">3 · Family history</button></td><td>Interview two patients, draw their families as you go, and check your drawings</td><td>45 min</td></tr>
+    <tr><td><button class="goto" data-goto="inheritance" type="button">4 · Inheritance</button></td><td>Recessive, dominant and X-linked inheritance; recognising patterns; working out risks</td><td>45 min</td></tr>
+    <tr><td><button class="goto" data-goto="ethics" type="button">5 · Ethics</button></td><td>Five families from the ethics lecture, consent and genetic data, ways of reasoning about ethics</td><td>45 min</td></tr>
+  </table>
+  <p class="hint">Sections marked <span class="pill ext">Extension</span> are optional and are not counted in your progress.</p>
+</section>
+
+<!-- =====================================================================
+     CHAPTER 1 · WHY A PEDIGREE?
+     ===================================================================== -->
+<section class="chapter" id="why" data-num="1" data-title="Why a pedigree?" data-bench="pedigree" hidden>
+  <h1>Why take a family history?</h1>
+  <div class="meta-row"><span class="pill time">≈ 10 min</span><span class="pill">Workshop part 1</span></div>
+  <p class="lede">A family history is often the cheapest and most informative genetic test there is. Drawn as a pedigree, it shows at a glance who is affected, how they are related and who else may be at risk.</p>
+
+  <h2>What a pedigree is for</h2>
+  <ul>
+    <li><b>It is the key to assessing genetic risk.</b> The pattern of affected relatives suggests how a condition is inherited, helps with the diagnosis and shows how disease is distributed in the family.</li>
+    <li><b>It shows who else may be at risk</b>, including relatives who are not in the room.</li>
+    <li><b>It helps you get to know the family.</b> The family know things that we don't, and drawing the tree together brings them out.</li>
+    <li><b>It gives insight into family dynamics</b>: who talks to whom, who has been lost touch with, and who might find the news hard.</li>
+    <li><b>It records the situation at that time.</b> Families change: people are born, become ill and die, and test results come back. That is why a pedigree is dated and signed.</li>
+  </ul>
+
+  <h2>Who uses pedigrees?</h2>
+  <p>How a pedigree is used depends on who is looking at it:</p>
+  <table class="table">
+    <tr><th>Who</th><th>What they use it for</th></tr>
+    <tr><td>Primary care</td><td>Spotting patients who need a genetic assessment, and caring for patients in the light of their family history</td></tr>
+    <tr><td>Clinical genetics</td><td>Diagnosis, choosing a genetic test and who to test, and calculating risks</td></tr>
+    <tr><td>Other specialists</td><td>Managing patients according to the genetic basis of their condition</td></tr>
+    <tr><td>Researchers</td><td>Finding new genetic associations and studying known conditions further</td></tr>
+  </table>
+
+  <h2>Things to look for in primary care</h2>
+  <div class="callout lecture">
+    <div class="co-t">From the workshop: features that suggest a genetic cause</div>
+    <ul>
+      <li>Several closely <b>related people with the same condition</b></li>
+      <li>A condition at a <b>younger age than usual</b>, for example bowel cancer, breast cancer or dementia</li>
+      <li><b>Sudden cardiac deaths</b> in people who seemed healthy</li>
+      <li><b>Three or more pregnancy losses</b></li>
+      <li>Medical problems in the children of <b>parents who are related by blood</b></li>
+      <li><b>Congenital anomalies</b>, <b>dysmorphic features</b> or <b>developmental delay</b></li>
+      <li>Clues that are specific to the condition you are concerned about</li>
+    </ul>
+  </div>
+  <p>If the family history does warrant further investigation, the genetics team uses it to work out the possible diagnoses, choose the right genetic test and the right person to test, calculate the risks to relatives, recommend specialist care and extra surveillance where it is needed, and judge how the family is coping.</p>
+
+  <div class="q" data-q="w-referral" data-type="mcq">
+    <div class="q-text">Which of these family histories most strongly suggests an inherited cause?</div>
+    <div class="mcq">
+      <label data-why="Prostate cancer at this age is common, so two cases in elderly brothers is not unusual."><input type="radio"> A man of 84 whose brother had prostate cancer at 80</label>
+      <label data-correct data-why="Two close relatives with the same cancer, both much younger than usual: two of the workshop's warning signs together."><input type="radio"> A woman whose mother and sister both had bowel cancer in their thirties</label>
+      <label data-why="Type 2 diabetes in later life is common and mostly not due to a single gene."><input type="radio"> A woman whose grandmother had type 2 diabetes at 70</label>
+      <label data-why="A heart attack at 75 after many years of smoking has an obvious cause and is not unusual."><input type="radio"> A man whose father, a lifelong smoker, had a heart attack at 75</label>
+    </div>
+  </div>
+  <div class="q" data-q="w-reasons">
+    <div class="q-text">Give three reasons for taking a family history, in your own words.</div>
+    <div class="q-model"><p>Any three of: to assess genetic risk (the pattern of inheritance, help with the diagnosis, the distribution of disease); to find relatives who may be at risk; to get to know the family and learn what they know; to understand family dynamics; to record the family's situation at that time. It also helps to choose the right test and the right person to test.</p></div>
+  </div>
+  <div class="q" data-q="w-dated">
+    <div class="q-text">A pedigree “records the situation at that time”. Why does that matter if a family comes back to the clinic five years later?</div>
+    <div class="q-model"><p>The family will have changed: relatives may have been diagnosed or died, children may have been born, and some people may have had genetic tests. Risks worked out from the old pedigree may now be wrong, so it needs updating. Dating and signing a pedigree shows how current it is and who took the information.</p></div>
+  </div>
+</section>
+
+<!-- =====================================================================
+     CHAPTER 2 · SYMBOLS
+     ===================================================================== -->
+<section class="chapter" id="symbols" data-num="2" data-title="Symbols" data-bench="pedigree" data-ped="practice" hidden>
+  <h1>Symbols and conventions</h1>
+  <div class="meta-row"><span class="pill time">≈ 25 min</span><span class="pill">Workbench: Pedigree</span></div>
+  <p class="lede">Pedigrees use an agreed set of symbols, so that a pedigree drawn in one clinic can be read in another. They were standardised by the US National Society of Genetic Counselors in 1995 and updated in 2008 and 2022.</p>
+
+  <h2 id="sym-start">Starting points</h2>
+  <ul>
+    <li><b>Start with the person in front of you</b> (the proband) and build up and out from them.</li>
+    <li><b>Men are squares and women are circles.</b> Since the 2022 update the symbol shows the person's gender identity. A transgender man is a square and a transgender woman is a circle, with their sex assigned at birth written underneath (AFAB or AMAB) when it is relevant. A diamond is used for a non-binary person, or when sex is not known.</li>
+    <li><b>In a couple, the man goes on the left and the woman on the right</b> where that is possible.</li>
+    <li><b>Brothers and sisters go from oldest on the left to youngest on the right.</b></li>
+    <li><b>Affected people are shaded.</b> If more than one condition runs in the family, use different colours or shade quarters of the symbol, and add a key.</li>
+  </ul>
+
+  <h2 id="sym-table">The symbols</h2>
+  <table class="symtab" data-symbols="all"></table>
+  <p class="hint">The whole table is also in the <button class="goto" data-goto="reference" type="button">Reference</button> chapter.</p>
+
+  <h2 id="sym-draw">Draw them yourself</h2>
+  <p>Use your practice pedigree from the warm-up, or add new people to it. Every step ticks itself when the Studio can see the symbol. The <b>show me</b> buttons point at the control you need.</p>
+  <div class="activity" data-ped="practice">
+    <div class="act-t">Activity 2.1 · People <button class="btn small" type="button" data-ped="practice">Open my practice pedigree</button></div>
+    <ol class="steps">
+      <li data-task="y-proband" data-check="has:proband">Select one person and switch on <b>Proband (arrow)</b> in the panel. <button class="do showme" type="button" data-studio="flash:#probandToggle">show me</button></li>
+      <li data-task="y-affected" data-check="has:affected">Shade someone as affected: under <b>Shading</b>, choose <b>Full</b> and a colour. <button class="do showme" type="button" data-studio="flash:.fill-mode-row">show me</button></li>
+      <li data-task="y-deceased" data-check="has:deceased">Mark one of the grandparents as <b>Deceased</b>. <button class="do showme" type="button" data-studio="flash:#deceasedToggle">show me</button></li>
+      <li data-task="y-notes" data-check="has:text~dx">Under someone affected, write notes such as <code>Ann, 52</code> on one line and <code>Breast cancer dx 45</code> on the next. “dx 45” means diagnosed at 45. <button class="do showme" type="button" data-studio="flash:#personText">show me</button></li>
+      <li data-task="y-multiple" data-check="has:multiple">Show “three brothers, all well” with one symbol: add a square, type <code>3</code> in the box under <b>Inside the symbol</b> and click <b>Number</b>. <button class="do showme" type="button" data-studio="flash:.ct-num">show me</button></li>
+      <li data-task="y-carrier" data-check="has:carrier">Mark someone as a <b>carrier</b> (a dot inside). <button class="do showme" type="button" data-studio="flash:[data-ct=&quot;dot&quot;]">show me</button></li>
+    </ol>
+  </div>
+  <div class="activity" data-ped="practice">
+    <div class="act-t">Activity 2.2 · Pregnancies and children</div>
+    <ol class="steps">
+      <li data-task="y-pregnancy" data-check="has:pregnancy">Add a current pregnancy: select a parent, add a child, change the child's symbol to the diamond and put <b>P</b> inside. <button class="do showme" type="button" data-studio="flash:.shape-row">show me</button></li>
+      <li data-task="y-loss" data-check="has:loss">Add a pregnancy loss to a couple. Click <b>Loss</b> on the toolbar, then use <b>Child</b> under Connect: click the couple's relationship line, then the triangle. <button class="do showme" type="button" data-studio="tool:child">show me</button></li>
+      <li data-task="y-twins" data-check="twins:identical">Make two brothers or sisters into identical twins: choose <b>Twins</b> under Connect, check that <b>Identical</b> is selected, and click the two children. <button class="do showme" type="button" data-studio="tool:twin">show me</button></li>
+      <li data-task="y-adopted" data-check="has:adopted">Show that a child was adopted: select them and change their symbol to one of the bracketed ones. <button class="do showme" type="button" data-studio="flash:.shape-row">show me</button></li>
+      <li data-task="y-dashed" data-check="dashed">They were adopted <i>into</i> this family, so click the line above them and choose <b>Dashed (adopted in)</b>.</li>
+    </ol>
+  </div>
+  <div class="activity" data-ped="practice">
+    <div class="act-t">Activity 2.3 · Relationships and the finishing touches</div>
+    <ol class="steps">
+      <li data-task="y-separated" data-check="couple:separated">Click a relationship line and choose <b>Separated</b>.</li>
+      <li data-task="y-key" data-check="key">Click <b>Key</b> on the toolbar and type what each colour means into the key. <button class="do showme" type="button" data-studio="key">show me</button></li>
+      <li data-task="y-label" data-check="label">A pedigree is dated and signed. Choose <b>More → Text label</b>, click on the drawing and type today's date and your name.</li>
+    </ol>
+    <div class="optional">
+      <p><span class="pill ext">Extension</span> Draw two first cousins who have a child together. Add a grandchild to each of two brothers or sisters, then use <b>Partners</b> to join the two grandchildren. Pedigree Studio sees that they share grandparents and draws the double line by itself.</p>
+      <ol class="steps"><li data-task="y-consang" data-check="couple:consanguineous">Draw a consanguineous couple.</li></ol>
+    </div>
+  </div>
+
+  <h2 id="sym-notes">What to write under each symbol</h2>
+  <p>Next to or under each symbol, write what you know about that person: their name, their age or date of birth, the age they died and the cause, and any medical conditions with the age at diagnosis. A healthy relative can be written as <b>A&amp;W</b> (alive and well). The workshop also reminds us to:</p>
+  <ul>
+    <li><b>Ask about consanguinity</b>: “Are you and your partner related in any way?” and, if so, how.</li>
+    <li><b>Record at least basic information on both sides of the family</b>, even if the condition seems to be on one side only.</li>
+    <li><b>Code the conditions</b> if there is more than one in the family, and explain the code in a key on the chart so that others can understand it.</li>
+    <li><b>Date and sign the pedigree</b>, and note who gave the information.</li>
+  </ul>
+  <p>Electronic pedigree programs such as PhenoTips and Progeny, and the Pedigree Studio you are using, help with all of these.</p>
+
+  <h2 id="sym-read">Reading a pedigree: the Okafor family</h2>
+  <p>Now read a pedigree that someone else has drawn. The Studio numbers everyone by generation (Roman numerals) and position from the left, so that people can be referred to as, for example, III-2.</p>
+  <div class="activity" data-ped="okafor">
+    <div class="act-t">Activity 2.4 · Read the Okafor family <button class="btn small" type="button" data-ped="okafor">Open the Okafor family</button></div>
+    <ol class="steps">
+      <li data-task="y-okafor" data-auto="ped:open id=okafor" data-check="open:okafor">Open the pedigree and look at it carefully before you answer the questions below.</li>
+    </ol>
+  </div>
+  <div class="q" data-q="y-ok-proband" data-accept="chidi" data-hint="look for the arrow">
+    <div class="q-text">What is the name of the proband?</div>
+    <div class="q-model"><p><b>Chidi</b>, aged 7: the arrow is at the lower left of his symbol.</p></div>
+  </div>
+  <div class="q" data-q="y-ok-twins" data-type="mcq">
+    <div class="q-text">Chidi and Dubem's lines meet at one point and are joined by a short bar. What does this tell you?</div>
+    <div class="mcq">
+      <label data-why="Non-identical twins also share one point on the line of descent, but have no bar."><input type="radio"> They are non-identical twins</label>
+      <label data-correct data-why="The bar shows that they are monozygotic: they come from one fertilised egg and have the same genome."><input type="radio"> They are identical (monozygotic) twins</label>
+      <label data-why="Brothers born at different times each have their own line from the sibship line."><input type="radio"> They are brothers born a year apart</label>
+    </div>
+  </div>
+  <div class="q" data-q="y-ok-pregs" data-accept="^\s*(4|four)\b" data-hint="count every pregnancy, including the one that is ongoing – and think about the twins">
+    <div class="q-text">How many pregnancies has Amaka had, including the current one?</div>
+    <div class="q-model"><p><b>Four</b>: Ada; the miscarriage in 2016; the twins Chidi and Dubem, who were one pregnancy; and the current pregnancy of 16 weeks.</p></div>
+  </div>
+  <div class="q" data-q="y-ok-three" data-type="mcq">
+    <div class="q-text">What does the square with a 3 inside it, on the right of generation III, mean?</div>
+    <div class="mcq">
+      <label data-why="Generation is shown by the row (a Roman numeral), not by a number inside the symbol."><input type="radio"> A man in the third generation</label>
+      <label data-correct data-why="A number inside a symbol stands for that many people. Here it saves drawing three identical squares for Amaka's brothers, who are all well."><input type="radio"> Three brothers, drawn as one symbol</label>
+      <label data-why="Being affected is shown by shading, not by a number."><input type="radio"> A man affected with a third condition</label>
+    </div>
+  </div>
+  <div class="q" data-q="y-ok-double" data-accept="cousin" data-hint="look at who Obi's and Amaka's parents are, and how those parents are related">
+    <div class="q-text">Obi and Amaka are joined by a double line. How are they related to each other?</div>
+    <div class="q-model"><p>They are <b>first cousins</b>. Obi's father Emeka and Amaka's mother Grace are brother and sister, children of Nnamdi and Adanna. The double line shows that the partners are related by blood (consanguinity).</p></div>
+  </div>
+  <div class="q" data-q="y-ok-dead" data-type="pick" data-ped="okafor" data-answer="nnamdi,adanna,emeka,samuel,chioma" data-prompt="Click everyone who has died">
+    <div class="q-text">Click everyone in the Okafor family who has died.</div>
+    <div class="q-model"><p>Five people have a diagonal line through their symbol: Nnamdi and Adanna, Emeka, Samuel and Chioma.</p></div>
+  </div>
+  <div class="q" data-q="y-ok-inherited">
+    <div class="q-text">Which features of this pedigree suggest that Chidi's hearing loss could be inherited, and how?</div>
+    <div class="q-model"><p>Chidi's parents are not affected but they are first cousins, and the condition has appeared in a child of theirs. Related parents are more likely to carry the same recessive variant, inherited from a shared ancestor, so this points towards <b>autosomal recessive</b> inheritance (in hearing loss, often variants in <i>GJB2</i>). Note that Dubem being affected adds little: identical twins share the same genome, so they count once, not twice. Chapter 4 looks at patterns like this.</p></div>
+  </div>
+  <div class="q" data-q="y-order">
+    <div class="q-text">Why do you think the convention is to draw brothers and sisters from oldest on the left to youngest on the right?</div>
+    <div class="q-model"><p>It makes the pedigree quicker to read and compare, and it carries information without extra writing: you can see at a glance who is older. Birth order can matter clinically, for example when a condition starts at a certain age, when deciding who can be tested, or for conditions linked to maternal age. If following the convention would make lines cross, it can be relaxed, and ages written under the symbols.</p></div>
+  </div>
+</section>
+
+<!-- =====================================================================
+     CHAPTER 3 · TAKING A FAMILY HISTORY
+     ===================================================================== -->
+<section class="chapter" id="history" data-num="3" data-title="Family history" data-bench="pedigree" data-ped="draw-mensah" hidden>
+  <h1>Taking a family history and drawing it</h1>
+  <div class="meta-row"><span class="pill time">≈ 45 min</span><span class="pill">Workbench: Pedigree</span><span class="pill">Workshop part 2</span></div>
+  <p class="lede">In the workshop you take a family history from a partner who plays the patient. Here the patients are simulated: you choose what to ask, they answer, and you draw their family in the Studio as the answers come in. Then the page checks your drawing against the family.</p>
+
+  <h2 id="fh-what">What to collect</h2>
+  <ul>
+    <li>Ask early on: <i>“Has anyone in your family been seen by a genetics service, or had genetic testing?”</i></li>
+    <li>For each person: their <b>full name</b>, <b>date of birth or age</b>, <b>date of death or age at death</b>, and <b>medical information, with the age at diagnosis</b>.</li>
+    <li>What you need depends on why you are asking. In a family with cancer, for example, record the <b>primary site</b> of each cancer and the <b>age at diagnosis</b>.</li>
+    <li>Ask about ancestry: <i>“Originally, where did each of your grandparents come from?”</i> Some variants are much more common in particular populations.</li>
+  </ul>
+  <p>The information can be recorded as longhand notes, on a family history form, or straight onto a family tree, by hand or with pedigree software. In this practical you draw as you go.</p>
+
+  <h2 id="fh-how">How to ask</h2>
+  <div class="callout lecture">
+    <div class="co-t">Top tips from the workshop</div>
+    <ul>
+      <li>Make eye contact regularly, and use sensitive, respectful language.</li>
+      <li>Ask clear, short questions: <i>“Do you have any brothers and sisters?” “Do you all have the same parents?” “Is your mother still living?” “Has anyone in the family lost a baby?” “How old was your sister when she died?”</i></li>
+      <li>Metaphors and quick comments are not always your friend: <i>“when did they pass?”</i>, or <i>“great, thank you”</i> straight after hearing about a death.</li>
+      <li>Notice body language and what the person says, or avoids saying, about difficult subjects. Use <b>tentative immediacy</b> – sharing your sense of what the person may be feeling – to acknowledge painful areas.</li>
+      <li>Give the person a contact number, so that they can add or correct details later.</li>
+    </ul>
+  </div>
+  <p>Taking a family history can be quick and simple, or it can be a challenging and emotional experience – for the patient, for you, or for both. It can bring up deaths, divorce, loss of contact, non-paternity, adoption, gaps in what people know, family feuds, disabled brothers or sisters, the effects of disease, miscarriages, terminations and consanguinity. People with a genetic condition in the family may feel <b>guilt</b> (at passing a condition on, or at being unaffected), <b>anger</b> (at a parent, or an unaffected brother or sister), <b>stigma</b>, <b>grief</b> (for the life they cannot have, for their health, for relatives who have died) and <b>anxiety</b> about the future and the decisions they face.</p>
+  <p>It is not always straightforward. The person may start to cry, tell a long story, or struggle to remember dates of birth or causes of death. Handling these moments well is part of advanced genetic counselling practice, and it comes with experience. For now, notice them, stay kind, and record what is uncertain as uncertain.</p>
+
+  <h2 id="fh-mensah">Interview 1: Abena Mensah</h2>
+  <div class="callout scenario">
+    <div class="co-t">The referral</div>
+    <p>Abena Mensah is 34. Her GP has referred her to the clinical genetics service because her younger brother died suddenly last year. Take her family history: choose questions from the topics below the conversation and draw her family in the Studio as you go. Ask in whatever order you like – but think about the order you would use in a real clinic.</p>
+  </div>
+  <div class="interview" data-iv="mensah"></div>
+  <div class="activity" data-ped="draw-mensah">
+    <div class="act-t">Activity 3.1 · Draw the Mensah family <button class="btn small" type="button" data-ped="draw-mensah">Open my drawing</button></div>
+    <ol class="steps">
+      <li data-task="h-open" data-auto="ped:open id=draw-mensah" data-check="open:draw-mensah">Open your drawing for this interview (<b>Interview 1: the Mensah family</b> in the list above the Studio). It starts empty.</li>
+      <li data-task="h-proband" data-check="has:female&amp;proband">Ask Abena why she has come, then draw her and mark her as the proband.</li>
+      <li data-task="h-children" data-check="probandChildren:4">Ask about her partner and children, and draw them all – including any pregnancies. Put each person's name and age under their symbol.</li>
+      <li data-task="h-sibs" data-check="probandSiblings:2">Ask about her brothers and sisters, and draw them.</li>
+      <li data-task="h-parents" data-check="probandParents">Ask about her parents and their health, and draw them.</li>
+      <li data-task="h-grand" data-check="grandparents">Ask about both sides of the family, and draw both sets of grandparents and her parents' brothers and sisters.</li>
+      <li data-task="h-asked" data-auto="iv:done iv=mensah">Ask all the important questions (the counter under the conversation shows how many you have asked).</li>
+      <li data-task="h-key" data-check="key">Add a key for the condition: click <b>Key</b> on the toolbar and type what the shading means.</li>
+      <li data-task="h-label" data-check="label">Add a text label (<b>More → Text label</b>) with the date and your name, as you would sign a pedigree in clinic.</li>
+    </ol>
+  </div>
+  <div class="q" data-q="h-check-mensah" data-type="pedcheck" data-ped="draw-mensah" data-expect="mensah">
+    <div class="q-text">Check your pedigree of the Mensah family. Fix anything that comes up and check again.</div>
+  </div>
+  <div class="q" data-q="h-mensah-flags">
+    <div class="q-text">Which features of Abena's family history are warning signs of an inherited heart condition?</div>
+    <div class="q-model"><p>Kofi's <b>sudden death at 28</b> during exercise, with <b>hypertrophic cardiomyopathy at post-mortem</b> and a <b>variant in <i>MYBPC3</i></b>; her father now has the same condition; her grandfather Yaw <b>died suddenly at 45</b>; and her aunt Adwoa has a pacemaker for a reason the family does not know. Sudden cardiac death in a young person who seemed healthy is one of the workshop's warning signs on its own.</p></div>
+  </div>
+  <div class="q" data-q="h-mensah-pattern" data-accept="dominant" data-hint="the condition is in several generations, and a father and son are both affected">
+    <div class="q-text">Which pattern of inheritance does this family suggest?</div>
+    <div class="q-model"><p><b>Autosomal dominant</b>: affected people in more than one generation (Kofi and his father, and probably his grandfather), with transmission from father to son, which rules out X-linked inheritance. Hypertrophic cardiomyopathy is usually autosomal dominant, and <i>MYBPC3</i> is the gene most often involved.</p></div>
+  </div>
+  <div class="q" data-q="h-mensah-cascade">
+    <div class="q-text">Kofi's <i>MYBPC3</i> variant is known. In what order would you offer testing for it to Abena's relatives, and why?</div>
+    <div class="q-model"><p>Start with Kofi's first-degree relatives. Testing his father Kwame first (affected, so very likely to carry it) would confirm which side of the family it comes from. Abena and Kwesi each have a 1 in 2 chance of carrying it. If Abena carries it, each of her children (and the pregnancy) has a 1 in 2 chance. Children in families with HCM are usually offered heart checks, and often genetic testing, because the condition can cause problems in childhood and adolescence – unlike the adult-onset conditions in chapter 5. If Kwame carries it, his brother and sister (Kojo and Adwoa) can be offered testing next, and so on down their branches. This step-by-step testing of relatives is called <b>cascade testing</b>.</p></div>
+  </div>
+
+  <h2 id="fh-price">Interview 2: Megan Price</h2>
+  <div class="callout scenario">
+    <div class="co-t">The referral</div>
+    <p>Megan Price is 31. She has asked her GP about her family history of cancer. This time there are fewer prompts: take the history, draw the family, and check your pedigree at the end.</p>
+  </div>
+  <div class="interview" data-iv="price"></div>
+  <div class="activity" data-ped="draw-price">
+    <div class="act-t">Activity 3.2 · Draw the Price family <button class="btn small" type="button" data-ped="draw-price">Open my drawing</button></div>
+    <ol class="steps">
+      <li data-task="h2-open" data-auto="ped:open id=draw-price" data-check="open:draw-price">Open <b>Interview 2: the Price family</b> in the list above the Studio.</li>
+      <li data-task="h2-asked" data-auto="iv:done iv=price">Take Megan's family history.</li>
+      <li data-task="h2-drawn" data-check="count:14">Draw her family. There is more than one condition, so use a different colour for each and add a key.</li>
+    </ol>
+  </div>
+  <div class="q" data-q="h-check-price" data-type="pedcheck" data-ped="draw-price" data-expect="price">
+    <div class="q-text">Check your pedigree of the Price family.</div>
+  </div>
+  <div class="q" data-q="h-price-amy">
+    <div class="q-text">Why does it matter for the risk assessment that Amy was adopted?</div>
+    <div class="q-model"><p>Amy is not biologically related to the Price family, so she cannot have inherited a variant from Bill and Jean's side, and she should not be counted when looking for a pattern. Her own genetic risks come from her birth family, about whom little may be known. The brackets and the dashed line make this clear to anyone reading the pedigree.</p></div>
+  </div>
+  <div class="q" data-q="h-price-test">
+    <div class="q-text">Megan's mother was told in 2010 that no variant was found. Does that mean the cancers in this family are not inherited? What would you suggest?</div>
+    <div class="q-model"><p>Not necessarily. Genetic testing in 2010 looked at fewer genes, and was less sensitive, than testing now, and Megan does not know what was tested. The family history is striking: breast cancer at 42 in Karen, ovarian cancer at 50 in her sister Julie, and their mother Jean died at 47, possibly of breast cancer. It would be worth finding out what Karen's test covered and offering her up-to-date testing (in England, under the test directory's inherited breast and ovarian cancer indication). Testing an affected relative first is the most informative way to begin.</p></div>
+  </div>
+  <div class="q" data-q="h-price-twins" data-type="mcq">
+    <div class="q-text">Ryan and Luke are identical twins. What does that mean for genetic testing?</div>
+    <div class="mcq">
+      <label data-why="Identical twins come from one fertilised egg, so their genomes are the same."><input type="radio"> Each twin has a separate 1 in 2 chance of carrying a family variant</label>
+      <label data-correct data-why="Their genomes are the same, so one twin's result applies to the other – which also means that one twin's test reveals the other's status, something to discuss with both before testing."><input type="radio"> If one twin carries a family variant, so does the other</label>
+      <label data-why="Twins can certainly inherit variants; being twins does not protect them."><input type="radio"> Twins cannot inherit cancer predisposition variants</label>
+    </div>
+  </div>
+  <div class="q" data-q="h-reflect">
+    <div class="q-text">Which questions were hardest to ask, or to answer, and how would you handle them in a real clinic?</div>
+    <div class="q-model"><p>There is no single answer. Many people find questions about deaths, miscarriages, adoption and estrangement hardest. Acknowledging the person's feelings, asking short clear questions, explaining why you need the information, and recording uncertainty (“?breast cancer”) rather than pressing for detail the person does not have all help.</p></div>
+  </div>
+</section>
+
+<!-- =====================================================================
+     CHAPTER 4 · INHERITANCE
+     ===================================================================== -->
+<section class="chapter" id="inheritance" data-num="4" data-title="Inheritance" data-bench="inherit" data-ped="cf" hidden>
+  <h1>Patterns of inheritance</h1>
+  <div class="meta-row"><span class="pill time">≈ 45 min</span><span class="pill">Workbench: Pedigree and Inheritance</span><span class="pill">Workshop part 3</span></div>
+  <p class="lede">The features of a family history give clues to how a condition is inherited, and the pattern of inheritance determines the risk to relatives. This chapter covers the three patterns in the workshop: autosomal recessive, autosomal dominant and X-linked.</p>
+
+  <h2 id="inh-ar">Autosomal recessive</h2>
+  <p>A person is affected only if they inherit <b>two faulty copies</b> of the gene, one from each parent. People with one faulty copy are <b>carriers</b>: they are not affected, but can pass the faulty copy on.</p>
+  <div class="activity">
+    <div class="act-t">Activity 4.1 · Two carriers</div>
+    <ol class="steps">
+      <li data-task="i-ar-cross" data-check="inherit.cross:ar,1,1">Open the <b>Inheritance</b> tab, choose <b>Autosomal recessive</b> and make both parents <b>Carriers</b>. <button class="do showme" type="button" data-inherit="ar 1 1">show me</button></li>
+      <li data-task="i-ar-unaff" data-check="inherit.cross:ar,1,1,unaffected">Now tick <b>We already know this child is unaffected</b>. <button class="do showme" type="button" data-inherit="ar 1 1 unaffected">show me</button></li>
+    </ol>
+  </div>
+  <div class="q" data-q="i-ar-quarter" data-accept="^\s*(1\s*(/|in)\s*4|25\s*%?|0?\.25|one in four|a quarter)\s*$" data-hint="give it as a fraction, such as 1/2">
+    <div class="q-text">Two carriers have a child. What is the chance that the child is affected?</div>
+    <div class="q-model"><p><b>1 in 4</b> (25%) for each pregnancy. The chance that the child is a carrier is 1 in 2, and the chance of being neither is 1 in 4.</p></div>
+  </div>
+  <div class="q" data-q="i-ar-twothirds" data-accept="^\s*(2\s*/\s*3|2 in 3|two in three|two.thirds|0?\.66?7?|66\.?\d*\s*%|67\s*%)\s*$" data-hint="once you know the child is unaffected, one of the four outcomes is ruled out">
+    <div class="q-text">Amelia has cystic fibrosis. Her brother David is not affected. What is the chance that David is a carrier?</div>
+    <div class="q-model"><p><b>2 in 3</b>, not 1 in 2. Of the four equally likely outcomes, the affected one is ruled out because David is unaffected. Two of the three that remain are carriers. This assumes, as the workshop says, that the condition is fully penetrant and David would have shown symptoms if he were affected.</p></div>
+  </div>
+  <p><b>Features of autosomal recessive inheritance:</b></p>
+  <ul>
+    <li>Males and females are equally likely to be affected.</li>
+    <li>Affected people are usually brothers and sisters, not parents or children of affected people – a “horizontal” pattern.</li>
+    <li>Unaffected parents can have an affected child.</li>
+    <li>The parents may be related. The rarer the condition in the population, the more likely it is that the parents of an affected child are related by blood.</li>
+    <li>In small families the condition often appears in only one child.</li>
+  </ul>
+  <p>Examples are cystic fibrosis and sickle cell disease. <b>Cystic fibrosis</b> affects about 1 in 2,500 babies born in the UK – around 240 a year. The glands' secretions are thicker than usual, which can block the small bowel in newborns (meconium ileus), causes thick mucus in the lungs with repeated chest infections and progressive lung damage, and causes pancreatic insufficiency with poor absorption of food and poor growth. Nearly all men with CF are infertile, because the vas deferens is absent or has not developed properly. It is the most common recessive disease in people of Northern European descent, in whom about <b>1 in 25</b> people is a carrier; it is less common in other groups.</p>
+
+  <h3 id="inh-cf">The workshop's cystic fibrosis scenario</h3>
+  <div class="activity" data-ped="cf">
+    <div class="act-t">Activity 4.2 · David and Lisa <button class="btn small" type="button" data-ped="cf">Open the pedigree</button></div>
+    <ol class="steps">
+      <li data-task="i-cf-open" data-auto="ped:open id=cf">David's sister Amelia has CF. David and his partner Lisa are expecting a baby, and Lisa has no family history of CF. Open their pedigree.</li>
+      <li data-task="i-cf-calc" data-check="inherit.calc:1/150">On the <b>Inheritance</b> tab, use the calculator at the bottom to work out the chance that the baby has CF. <button class="do showme" type="button" data-inherit="calc ar 2/3 1/25">show me</button></li>
+    </ol>
+  </div>
+  <div class="q" data-q="i-cf-obligate" data-type="pick" data-ped="cf" data-answer="philip,ruth" data-prompt="Click everyone who must be a carrier of CF">
+    <div class="q-text">Click everyone in this pedigree who <b>must</b> be a carrier (an obligate carrier).</div>
+    <div class="q-model"><p><b>Philip and Ruth</b>, Amelia's parents. Amelia inherited one faulty copy from each of them, and neither is affected.</p></div>
+  </div>
+  <div class="q" data-q="i-cf-baby" data-accept="\b1\s*(/|in)\s*150\b||\b2\s*/\s*300\b||0?\.0066?7?\b||0?\.67\s*%" data-hint="multiply David's carrier chance, Lisa's carrier chance and the chance that two carriers have an affected child">
+    <div class="q-text">What is the chance that David and Lisa's baby has cystic fibrosis?</div>
+    <div class="q-model"><p>2/3 (David a carrier) × 1/25 (Lisa a carrier, from the population figure) × 1/4 (two carriers have an affected child) = 2/300 = <b>1 in 150</b>.</p></div>
+  </div>
+  <p>Then the family remember that Lisa's grandfather John and David's grandfather Arthur were brothers – so Lisa and David are second cousins – and Lisa's father Michael has a carrier test.</p>
+  <div class="activity" data-ped="cf-cousins">
+    <div class="act-t">Activity 4.3 · The effect of consanguinity <button class="btn small" type="button" data-ped="cf-cousins">Open the new pedigree</button></div>
+    <ol class="steps">
+      <li data-task="i-cfc-open" data-auto="ped:open id=cf-cousins">Open the updated pedigree. Notice the double line between Lisa and David, and the dot showing that Michael is a carrier.</li>
+      <li data-task="i-cfc-calc" data-check="inherit.calc:1/12">Recalculate the chance that the baby has CF. <button class="do showme" type="button" data-inherit="calc ar 2/3 1/2">show me</button></li>
+    </ol>
+  </div>
+  <div class="q" data-q="i-cfc-lisa" data-accept="^\s*(1\s*(/|in)\s*2|50\s*%?|0?\.5|one in two|a half|half)\s*$" data-hint="what is the chance that a child of a known carrier is a carrier?">
+    <div class="q-text">Michael is a carrier. What is Lisa's chance of being a carrier now?</div>
+    <div class="q-model"><p><b>1 in 2</b>: she has a 1 in 2 chance of having inherited her father's faulty copy. (Her mother Anne could also be a carrier by chance, but that adds very little.)</p></div>
+  </div>
+  <div class="q" data-q="i-cfc-baby" data-accept="\b1\s*(/|in)\s*12\b||\b2\s*/\s*24\b||0?\.083\d*||8\.3\s*%" data-hint="replace Lisa's carrier chance in your earlier calculation">
+    <div class="q-text">What is the chance that the baby has CF now?</div>
+    <div class="q-model"><p>1/2 × 2/3 × 1/4 = <b>1 in 12</b>, more than ten times higher than before. Consanguinity raises the chance that both partners carry the same recessive variant, inherited from a shared ancestor.</p></div>
+  </div>
+
+  <h2 id="inh-ad">Autosomal dominant</h2>
+  <p>Inheriting <b>one</b> faulty copy is enough to be affected, or at risk. Each child of a person with the variant has a <b>1 in 2</b> chance of inheriting it, whether they are a son or a daughter. <button class="do showme" type="button" data-inherit="ad 0 1">show me on the Inheritance tab</button></p>
+  <ul>
+    <li>An affected person usually has an affected parent.</li>
+    <li>Affected people appear in more than one generation – a “vertical” pattern.</li>
+    <li>Males and females are equally likely to inherit the variant and be affected.</li>
+    <li>Every kind of transmission is seen: father to son, father to daughter, mother to son, mother to daughter. <b>Father-to-son transmission rules out X-linked inheritance.</b></li>
+  </ul>
+  <p>Examples include inherited breast cancer and Huntington's disease. Two things make dominant pedigrees harder to read:</p>
+  <div class="two-col">
+    <div class="cardlet"><h4>Penetrance</h4><p>The proportion of people with the variant who develop the condition. Inherited breast cancer shows <b>reduced penetrance</b>: a <i>BRCA</i> variant raises the risk, but not everyone with it develops cancer. Huntington's disease shows <b>complete penetrance</b>: people with the full expansion develop it if they live to the age of onset.</p></div>
+    <div class="cardlet"><h4>Variable expressivity</h4><p>The same condition can show itself differently in different people. Neurofibromatosis type 1 can be mild or severe, even within one family. In Huntington's disease the age of onset and severity can vary between generations.</p></div>
+  </div>
+
+  <h3 id="inh-brca">The workshop's BRCA2 scenario</h3>
+  <div class="activity" data-ped="brca2">
+    <div class="act-t">Activity 4.4 · Jane and Adam <button class="btn small" type="button" data-ped="brca2">Open the pedigree</button></div>
+    <ol class="steps">
+      <li data-task="i-brca-open" data-auto="ped:open id=brca2">Jane is pregnant. Her partner Adam's elder sister had breast cancer at 34 and was offered genetic testing (in England, test directory indication R208 includes breast cancer under 40). A pathogenic variant in <i>BRCA2</i>, c.5946delT, was found. Open the pedigree.</li>
+    </ol>
+  </div>
+  <div class="q" data-q="i-brca-adam" data-accept="^\s*(1\s*(/|in)\s*2|50\s*%?|0?\.5|one in two|a half|half)\s*$" data-hint="which parent is the variant most likely to have come from, and what is the chance a child inherits it?">
+    <div class="q-text">What is Adam's chance of carrying the <i>BRCA2</i> variant?</div>
+    <div class="q-model"><p><b>1 in 2</b>. His sister inherited it from one of their parents. Their mother had breast cancer at 47 and her sister had ovarian cancer, so it almost certainly came from their mother, and each of her children had a 1 in 2 chance of inheriting it.</p></div>
+  </div>
+  <div class="q" data-q="i-brca-baby" data-accept="^\s*(1\s*(/|in)\s*4|25\s*%?|0?\.25|one in four|a quarter)\s*$" data-hint="Adam's chance multiplied by the chance he passes it on">
+    <div class="q-text">What is the chance that Jane and Adam's baby has inherited the variant?</div>
+    <div class="q-model"><p>1/2 × 1/2 = <b>1 in 4</b>. If Adam is tested, this becomes either 1 in 2 or close to zero.</p></div>
+  </div>
+  <div class="q" data-q="i-brca-jewish">
+    <div class="q-text">Why was it useful to know that the family has Jewish ancestry?</div>
+    <div class="q-model"><p>Three <i>BRCA1</i> and <i>BRCA2</i> variants are much more common in people with Ashkenazi Jewish ancestry because of a founder effect, and <i>BRCA2</i> c.5946delT is one of them. Ancestry makes a <i>BRCA</i> variant more likely, can lower the threshold for testing, and allows a quick test for the common variants.</p></div>
+  </div>
+  <div class="q" data-q="i-brca-adam-men">
+    <div class="q-text">Adam is a man. Why might testing still matter to him and his family?</div>
+    <div class="q-model"><p>Men with <i>BRCA2</i> variants have a higher risk of prostate cancer (often more aggressive), male breast cancer and pancreatic cancer than other men, so they may be offered screening. And each of his children, sons or daughters, has a 1 in 2 chance of inheriting it. The variant can pass through unaffected men, which is one reason inherited breast cancer can seem to “skip” a generation.</p></div>
+  </div>
+
+  <h2 id="inh-xl">X-linked</h2>
+  <p>The gene is on the X chromosome. Males have one X chromosome, so one faulty copy affects them. Females have two, so with one faulty copy they are usually carriers.</p>
+  <div class="activity">
+    <div class="act-t">Activity 4.5 · Fathers and mothers</div>
+    <ol class="steps">
+      <li data-task="i-xl-father" data-check="inherit.cross:xl,0,1">On the Inheritance tab, choose <b>X-linked recessive</b> with an <b>affected father</b> and a mother who is not a carrier. <button class="do showme" type="button" data-inherit="xl 0 1">show me</button></li>
+      <li data-task="i-xl-mother" data-check="inherit.cross:xl,1,0">Now an unaffected father and a <b>carrier mother</b>. <button class="do showme" type="button" data-inherit="xl 1 0">show me</button></li>
+    </ol>
+  </div>
+  <div class="two-col">
+    <div class="cardlet"><h4>Father affected</h4><p>All his daughters inherit his X chromosome, so all are carriers (some have mild features). None of his sons are affected: sons get their father's Y chromosome, not his X. So there is <b>no male-to-male transmission</b>.</p></div>
+    <div class="cardlet"><h4>Mother a carrier</h4><p>Each son has a 1 in 2 chance of being affected, and each daughter a 1 in 2 chance of being a carrier.</p></div>
+  </div>
+  <p>In both cases more males are affected than females.</p>
+
+  <h2 id="inh-which">Which pattern?</h2>
+  <p>Open each family in turn and decide which pattern of inheritance fits it best. The questions explain each answer.</p>
+  <div class="activity" data-ped="family-a">
+    <div class="act-t">Activity 4.6 · Four families</div>
+    <ol class="steps">
+      <li data-task="i-fa" data-auto="ped:open id=family-a"><button class="goto" type="button" data-ped="family-a">Family A</button></li>
+      <li data-task="i-fb" data-auto="ped:open id=family-b"><button class="goto" type="button" data-ped="family-b">Family B</button></li>
+      <li data-task="i-fc" data-auto="ped:open id=family-c"><button class="goto" type="button" data-ped="family-c">Family C</button></li>
+      <li data-task="i-fd" data-auto="ped:open id=family-d"><button class="goto" type="button" data-ped="family-d">Family D</button></li>
+    </ol>
+  </div>
+  <div class="q" data-q="i-fa-mcq" data-type="mcq">
+    <div class="q-text">Family A: which pattern fits best?</div>
+    <div class="mcq">
+      <label data-correct data-why="Affected people in every generation, each with an affected parent, in both sexes – and II-4 passed it to his son III-4. Father-to-son transmission rules out X-linked inheritance."><input type="radio"> Autosomal dominant</label>
+      <label data-why="Recessive conditions rarely appear in every generation, and here every affected person has an affected parent."><input type="radio"> Autosomal recessive</label>
+      <label data-why="II-4 passed the condition to his son III-4. A father gives his son a Y chromosome, not an X, so this cannot be X-linked."><input type="radio"> X-linked recessive</label>
+    </div>
+  </div>
+  <div class="q" data-q="i-fb-mcq" data-type="mcq">
+    <div class="q-text">Family B: which pattern fits best?</div>
+    <div class="mcq">
+      <label data-why="Neither parent of the affected children is affected, and nobody else in the family is."><input type="radio"> Autosomal dominant</label>
+      <label data-correct data-why="Two affected children, a son and a daughter, of unaffected parents who are first cousins (the double line): the classic picture of a recessive condition, with both parents carrying a variant from a shared ancestor."><input type="radio"> Autosomal recessive</label>
+      <label data-why="A daughter is affected and both affected children have an unaffected father; X-linked recessive conditions mostly affect males."><input type="radio"> X-linked recessive</label>
+    </div>
+  </div>
+  <div class="q" data-q="i-fc-mcq" data-type="mcq">
+    <div class="q-text">Family C: which pattern fits best?</div>
+    <div class="mcq">
+      <label data-why="With dominant inheritance, I-2, II-2 and III-2 would all have to carry the variant without being affected, while every man with it was affected. That is possible, but an X-linked pattern explains the family much more simply."><input type="radio"> Autosomal dominant</label>
+      <label data-why="The condition appears in three generations and only in males; a recessive condition would affect both sexes."><input type="radio"> Autosomal recessive</label>
+      <label data-correct data-why="Only males are affected, they are related through unaffected women, and there is no father-to-son transmission."><input type="radio"> X-linked recessive</label>
+    </div>
+  </div>
+  <div class="q" data-q="i-fc-carriers" data-type="pick" data-ped="family-c" data-answer="i2,ii2,iii2,iii4" data-prompt="Click everyone who must be a carrier">
+    <div class="q-text">Family C: click everyone who <b>must</b> be a carrier (the obligate carriers).</div>
+    <div class="q-model"><p>Four women: <b>I-2</b> (her son II-4 is affected and her husband is not), <b>II-2</b> (mother of the affected III-1), <b>III-2</b> (mother of the affected IV-1) and <b>III-4</b> (daughter of the affected II-4: every daughter of an affected man inherits his X chromosome).</p></div>
+  </div>
+  <div class="q" data-q="i-fd-mcq" data-type="mcq">
+    <div class="q-text">Family D has breast cancer in three generations. Which explanation fits best?</div>
+    <div class="mcq">
+      <label data-why="I-2 and II-2 are affected but II-2's children have an unaffected father, and the cancers are in every generation: that is not a recessive picture."><input type="radio"> Autosomal recessive</label>
+      <label data-correct data-why="Affected women in three generations, linked through an unaffected man (II-3). He must carry the variant, because his mother and his daughter are affected: reduced penetrance, made more striking because breast cancer is much rarer in men."><input type="radio"> Autosomal dominant with reduced penetrance</label>
+      <label data-why="With X-linked recessive inheritance, men would be affected more often than women. Here only women are affected."><input type="radio"> X-linked recessive</label>
+    </div>
+  </div>
+  <div class="q" data-q="i-fd-skip" data-type="pick" data-ped="family-d" data-answer="ii3" data-prompt="Click the person who must carry the variant but is not affected">
+    <div class="q-text">Family D: click the person who must carry the variant even though they are not affected.</div>
+    <div class="q-model"><p><b>II-3</b>. His mother I-2 and his daughter III-3 are affected, and the variant can only have reached III-3 through him (her mother II-4 married into the family).</p></div>
+  </div>
+
+  <h2 id="inh-genes">Family histories in gene discovery and variant interpretation</h2>
+  <p>Careful study of a condition across many families can lead to new genes. Some families meet the diagnostic criteria for <b>neurofibromatosis type 1</b> – an autosomal dominant condition, caused by variants in <i>NF1</i> on chromosome 17, that usually presents with several café-au-lait patches – but have no <i>NF1</i> variant. In several such families, everyone affected had café-au-lait patches and freckling in the armpits but no neurofibromas, and all were found to have a variant in a different gene, <i>SPRED1</i>, that segregated with the condition (<i>J Med Genet</i> 2009;46:425–430). This is now called Legius syndrome.</p>
+  <div class="q" data-q="i-segregation">
+    <div class="q-text">A <b>variant of uncertain significance</b> (VUS) is found in a woman with a rare condition. How could her family help decide whether it causes the condition?</div>
+    <div class="q-model"><p>By <b>segregation analysis</b>: test her affected and unaffected relatives. If the variant is found in every affected relative, and not in unaffected adults who are past the usual age of onset, that supports it causing the condition; each additional informative relative adds evidence. If an affected relative does not have it, it is unlikely to be the cause. The pedigree shows who is worth testing and how informative each result would be.</p></div>
+  </div>
+</section>
+
+<!-- =====================================================================
+     CHAPTER 5 · ETHICS
+     ===================================================================== -->
+<section class="chapter" id="ethics" data-num="5" data-title="Ethics" data-bench="pedigree" data-ped="lynch" hidden>
+  <h1>Ethical dilemmas: families, not just individuals</h1>
+  <div class="meta-row"><span class="pill time">≈ 45 min</span><span class="pill">Workbench: Pedigree</span><span class="pill">Ethics lecture</span></div>
+  <p class="lede">A genetic result about one person is also information about their relatives. That simple fact is behind most of the ethical problems in clinical genetics. This chapter works through the families from the ethics lecture, using their pedigrees.</p>
+  <div class="callout ethics">
+    <div class="co-t">Thinking about ethics in genetics</div>
+    <p>There is often no single right answer, and several ethical issues can arise in the same family. Professional guidelines help, by giving precedent and consistency, as does discussion in a multidisciplinary team. Communication and documentation matter. Useful principles to think with are <b>confidentiality</b>, <b>beneficence</b> (doing good), <b>non-maleficence</b> (avoiding harm), <b>justice</b> (fairness) and <b>autonomy</b>. For each scenario, ask: what are the possible harms and benefits, who do they apply to, and what might help?</p>
+  </div>
+  <div class="q" data-q="e-ought" data-type="mcq">
+    <div class="q-text">Ethics is about how things <i>ought</i> to be (normative statements), not only how they <i>are</i> (descriptive statements). Which of these is normative?</div>
+    <div class="mcq">
+      <label data-why="This describes what happened – it is descriptive, even though it is about punishment."><input type="radio"> In the 18th century, traitors were sentenced to death by quartering.</label>
+      <label data-why="This is a claim about the world that evidence could support or refute – descriptive."><input type="radio"> Carbon offsets disproportionately advantage larger companies.</label>
+      <label data-correct data-why="‘Should not be allowed’ says how things ought to be: a normative claim."><input type="radio"> Companies should not be allowed to use carbon offsets.</label>
+    </div>
+  </div>
+
+  <h2 id="eth-lynch">Scenario 1: Lynch syndrome</h2>
+  <div class="callout scenario">
+    <div class="co-t">The family</div>
+    <p>Alice, 50, had bowel cancer at 45. An <i>MLH1</i> variant that causes Lynch syndrome has been found in her, her late sister Gwen and her uncle. <b>Brian</b>, Gwen's widower, does not want his children to know about the family's variant, and Alice is concerned. Her sister <b>Ann</b> and her cousin <b>Bob</b> have declined genetic testing, but want to carry on having colonoscopies every two years. They have not discussed it with their children.</p>
+  </div>
+  <div class="activity" data-ped="lynch">
+    <div class="act-t">Activity 5.1 · Who is at risk? <button class="btn small" type="button" data-ped="lynch">Open the pedigree</button></div>
+    <ol class="steps"><li data-task="e-lynch-open" data-auto="ped:open id=lynch">Open the Lynch syndrome pedigree and find Alice, Brian, Ann and Bob.</li></ol>
+  </div>
+  <div class="q" data-q="e-lynch-half" data-type="pick" data-ped="lynch" data-answer="ann,gd1,gd2,gary,bob" data-prompt="Click everyone with a 1 in 2 chance of carrying the MLH1 variant">
+    <div class="q-text">Click everyone who has a <b>1 in 2</b> chance of carrying the <i>MLH1</i> variant.</div>
+    <div class="q-model"><p>Five people: <b>Ann</b> (Alice's sister – their father must have carried it), <b>Gwen's two daughters</b>, and <b>Gary and Bob</b>, the sons of Alice's uncle, who has the variant.</p></div>
+  </div>
+  <div class="q" data-q="e-lynch-quarter" data-type="pick" data-ped="lynch" data-answer="ad1,ad2,bd,bs" data-prompt="Click everyone with a 1 in 4 chance">
+    <div class="q-text">Click everyone who has a <b>1 in 4</b> chance of carrying it.</div>
+    <div class="q-model"><p><b>Ann's two daughters and Bob's two children.</b> Their parents have a 1 in 2 chance and have not been tested. If Ann's daughters were tested and one carried the variant, that would reveal that Ann carries it too.</p></div>
+  </div>
+  <div class="q" data-q="e-lynch-brian">
+    <div class="q-text">Brian does not want his daughters, now 26 and 24, to be told. What are the competing interests, and what would you do?</div>
+    <div class="q-model"><p>Gwen's daughters are adults with their own <b>autonomy</b>, and each has a 1 in 2 chance of a variant for which there is effective prevention: colonoscopy every two years from 25 for <i>MLH1</i> carriers, which reduces deaths from bowel cancer (<b>beneficence</b>; harm from not knowing). Brian may want to protect them, may be grieving, or may feel guilty or anxious (the lecture's reasons for non-disclosure). The information is not only his: it comes from Gwen's and Alice's results, and Alice could tell her nieces herself. A sensible approach is to explore Brian's reasons, explain what the daughters could gain, and support Alice in sharing the information, for example with a family letter, offering to review it later. Professional guidance accepts that in exceptional cases a clinician's duty may extend beyond their own patient – but information should only be passed on if it brings a direct benefit, after weighing the interests involved, and the reasoning should be documented.</p></div>
+  </div>
+  <div class="q" data-q="e-lynch-annbob">
+    <div class="q-text">Ann and Bob have declined testing but want colonoscopies every two years. Is that reasonable? What about their children?</div>
+    <div class="q-model"><p>It is their right not to know their genetic status, and surveillance as if they were at risk is a safe choice for them. But there are costs: half of people in their position do not carry the variant and would be having colonoscopies (which have their own small risks) for nothing, which raises a question of <b>justice</b> in the use of NHS resources. Their children are adults at 1 in 4 risk who have not been told; testing them could reveal their parents' status. Encourage Ann and Bob to talk to their children, and offer help with that.</p></div>
+  </div>
+  <table class="table">
+    <tr><th>Reasons people give for not telling relatives</th><th>What can help</th></tr>
+    <tr><td>They have no contact with the relatives, but want them to know</td><td>Trace the relatives through the NHS and send the information to their GP</td></tr>
+    <tr><td>Communication in the family is poor or complicated</td><td>Discuss how the information could be passed on, and help if asked</td></tr>
+    <tr><td>They have not yet come to terms with the diagnosis; they fear guilt or blame; they want to “protect” their relatives</td><td>Talk openly about these concerns, and agree to come back to the question later</td></tr>
+  </table>
+  <div class="callout warn">
+    <div class="co-t">A case that reached the courts</div>
+    <p>In <i>ABC v St George's Healthcare NHS Trust</i> (High Court, 2020), a woman whose father had Huntington's disease was not told about it while she was pregnant, because he had asked his doctors not to tell her. The court held that the clinicians closely involved with her owed her a duty to <b>balance</b> her interest in knowing her genetic risk against her father's interest in confidentiality. Her claim failed: not telling her was a decision a responsible body of doctors could reach, and she had not shown that she would have ended the pregnancy.</p>
+  </div>
+  <table class="table">
+    <tr><th>Predictive (presymptomatic) testing: possible benefits</th><th>Possible drawbacks</th></tr>
+    <tr><td>Certainty about the future; being able to plan life and career; a sense of control; reproductive choices; treatment or prevention for some conditions; information for relatives</td><td>Uncertainty can be more comfortable; bad news can be hard to adjust to; the burden of telling relatives; implications for career, lifestyle and insurance; effects on family relationships</td></tr>
+  </table>
+  <p>Informed decision-making and <b>non-directive counselling</b> are essential.</p>
+
+  <h2 id="eth-hd">Scenario 2: Huntington's disease</h2>
+  <div class="callout scenario">
+    <div class="co-t">The family</div>
+    <p>Brian, 65, has Huntington's disease, as did his father Bob. His children, <b>Anne</b> (46) and <b>Philip</b> (39), can have predictive testing. Anne does not want to know her status, but her daughter <b>Claire</b> (24) does.</p>
+  </div>
+  <div class="activity" data-ped="hd">
+    <div class="act-t">Activity 5.2 · Testing by proxy <button class="btn small" type="button" data-ped="hd">Open the pedigree</button></div>
+    <ol class="steps"><li data-task="e-hd-open" data-auto="ped:open id=hd">Open the Huntington's disease pedigree.</li></ol>
+  </div>
+  <div class="q" data-q="e-hd-claire" data-accept="^\s*(1\s*(/|in)\s*4|25\s*%?|0?\.25|one in four|a quarter)\s*$" data-hint="what is Anne's chance, and what is the chance she passed it on?">
+    <div class="q-text">What is Claire's chance of having inherited the HD expansion?</div>
+    <div class="q-model"><p><b>1 in 4</b>: Anne has a 1 in 2 chance of having inherited it from Brian, and if she has, a 1 in 2 chance of having passed it to Claire.</p></div>
+  </div>
+  <div class="q" data-q="e-hd-reveal" data-type="pick" data-ped="hd" data-answer="anne" data-prompt="Click whose status a positive result for Claire would reveal">
+    <div class="q-text">If Claire is tested and has the expansion, whose genetic status would that reveal? Click them.</div>
+    <div class="q-model"><p><b>Anne's</b>. Claire can only have inherited it through her mother, so a positive result for Claire shows that Anne has it too – the very thing Anne has chosen not to know. This is called indirect testing, or testing by proxy.</p></div>
+  </div>
+  <div class="q" data-q="e-hd-what">
+    <div class="q-text">How would you approach Claire's request?</div>
+    <div class="q-model"><p>Claire has a right to be tested, and Anne has a right not to know; both cannot be fully respected if Claire tests positive. Weigh up both rights; counsel Claire about what a result would mean for her mother (and her sister and daughters); encourage the family to talk to each other; and offer support to everyone affected. Claire might choose to talk to her mother first, or to delay testing, but in the end the decision is hers.</p></div>
+  </div>
+
+  <h2 id="eth-children">Scenario 3: testing children</h2>
+  <div class="callout scenario">
+    <div class="co-t">The family</div>
+    <p>May, 49, has early-onset familial Alzheimer's disease (EOFAD), as did her father Henry. Her daughter <b>Sally</b> (29) has had a predictive test and has the family's EOFAD variant, though she has no symptoms. Sally wants to know whether her son <b>Ryan</b>, who is 6, has inherited it. May's husband Tom has von Hippel–Lindau disease (VHL), and so does their daughter <b>Emma</b> (24), who is worried that her son <b>Sean</b>, also 6, has VHL.</p>
+  </div>
+  <div class="activity" data-ped="eofad">
+    <div class="act-t">Activity 5.3 · Two six-year-olds <button class="btn small" type="button" data-ped="eofad">Open the pedigree</button></div>
+    <ol class="steps"><li data-task="e-eofad-open" data-auto="ped:open id=eofad">Open the pedigree. Find Ryan and Sean.</li></ol>
+  </div>
+  <div class="q" data-q="e-eofad-pick" data-type="pick" data-ped="eofad" data-answer="sean" data-prompt="Click the child whose test result could change their care now">
+    <div class="q-text">Click the child for whom a genetic test now could change their medical care.</div>
+    <div class="q-model"><p><b>Sean</b>. VHL causes tumours that can start in childhood, and children at risk are offered regular surveillance from a young age. A negative test would spare him years of check-ups; a positive one would make sure he has them.</p></div>
+  </div>
+  <div class="q" data-q="e-eofad-ryan">
+    <div class="q-text">Why would Ryan usually not be tested now, even though his mother wants him to be?</div>
+    <div class="q-model"><p>EOFAD starts in adulthood and nothing can be done in childhood to prevent it, so testing Ryan now would bring no medical benefit and would take away his own choice about whether to know. Guidance is that children are usually tested only when the result would affect their care in childhood; for adult-onset conditions, testing waits until the young person can decide for themselves, usually from 18, although exceptions are sometimes made. The welfare of the child is what matters most, it helps to involve the child as far as possible, and this can be hard for parents to accept.</p></div>
+  </div>
+
+  <h2 id="eth-repro">Scenario 4: reproductive decisions</h2>
+  <div class="callout scenario">
+    <div class="co-t">The family</div>
+    <p><b>Martha</b> (23) has the Huntington's disease expansion, like her mother Helen. She and Garth are 8 weeks pregnant and do not want a baby with the expansion. They have chorionic villus sampling (CVS), which shows that the baby has it, and Martha decides that she does not want to end the pregnancy. Her sister <b>Josie</b> (25), who has separated from her partner, is also 8 weeks pregnant. Josie does not want to know whether she will develop HD herself.</p>
+  </div>
+  <div class="activity" data-ped="hd-pregnancy">
+    <div class="act-t">Activity 5.4 · Two pregnancies <button class="btn small" type="button" data-ped="hd-pregnancy">Open the pedigree</button></div>
+    <ol class="steps"><li data-task="e-repro-open" data-auto="ped:open id=hd-pregnancy">Open the pedigree.</li></ol>
+  </div>
+  <p>A couple at risk of having a child with a serious inherited condition can choose to have a child in the same way as anyone else, or to use <b>prenatal diagnosis</b>, <b>pre-implantation genetic diagnosis</b> (testing embryos made by IVF), <b>donated eggs or sperm</b>, or <b>adoption</b>. Prenatal diagnosis is available when the genetic cause is known and the condition is serious. It is often done by <b>chorionic villus sampling</b> (CVS): a small sample of the placenta, taken from about 11 to 14 weeks of pregnancy. A result for a single gene is usually ready within about a week, and a full chromosome analysis in about two weeks. CVS carries a small chance of miscarriage. Older sources, including the lecture, give 1–2%; the NHS now quotes less than 1 in 200 for most pregnancies.</p>
+  <p>These are difficult decisions about wanted pregnancies. Couples weigh up the effect on the family of an affected child and that child's quality of life, and their religious, cultural and family beliefs matter.</p>
+  <div class="q" data-q="e-repro-martha">
+    <div class="q-text">Martha decides to continue the pregnancy after the test shows the baby has the HD expansion. What ethical issues does this raise for the future child?</div>
+    <div class="q-model"><p>It is equivalent to a predictive test on a child for an adult-onset condition: the child will grow up with their HD status already known, without having chosen to know it. How will this affect their upbringing? When and how will they be told? How will they feel about their parents' decision? These implications are discussed in depth with couples before prenatal diagnosis, and there is usually an expectation that an affected pregnancy will be ended – but couples may still decide to continue, and all the team can do is make sure they understand the ethical complications.</p></div>
+  </div>
+  <div class="q" data-q="e-repro-josie" data-accept="^\s*(1\s*(/|in)\s*2|50\s*%?|0?\.5|one in two|a half|half)\s*$" data-hint="exclusion testing tells you which of Josie's grandparents the baby's chromosome 4 came from – not whether Josie has the expansion">
+    <div class="q-text">Josie has <b>exclusion testing</b>, which shows whether the baby inherited the chromosome 4 that Josie received from her affected mother Helen (“high risk”) or from her father (“low risk”). The result is high risk. What is the baby's chance of having the HD expansion?</div>
+    <div class="q-model"><p><b>1 in 2</b> – the same as Josie's own chance. The baby has Helen's chromosome 4; whether that copy carries the expansion is exactly what Josie has chosen not to find out. Josie decides not to end the pregnancy, so her child will grow up at 1 in 2 risk – and if the child is ever tested and has the expansion, that would reveal Josie's status too.</p></div>
+  </div>
+
+  <h2 id="eth-genome">Scenario 5: what a genome can reveal</h2>
+  <div class="callout scenario">
+    <div class="co-t">The family</div>
+    <p>Back to May's family from scenario 3 (a different Helen from scenario 4). Helen, 22, is May's youngest daughter. Her baby <b>Sienna</b>, 18 months old, has profound hearing loss from birth and has her genome sequenced to look for the cause. The genome also shows that Sienna has the family's variant for early-onset Alzheimer's disease.</p>
+  </div>
+  <div class="activity" data-ped="hearing">
+    <div class="act-t">Activity 5.5 · An unexpected finding <button class="btn small" type="button" data-ped="hearing">Open the pedigree</button></div>
+    <ol class="steps"><li data-task="e-genome-open" data-auto="ped:open id=hearing">Open the pedigree.</li></ol>
+  </div>
+  <div class="q" data-q="e-genome-pick" data-type="pick" data-ped="hearing" data-answer="helen" data-prompt="Click the person whose status Sienna's result reveals">
+    <div class="q-text">This pedigree is drawn as the hearing team would see it, without the family's Alzheimer's disease. You know from scenario 3 that May has EOFAD. Whose genetic status does Sienna's result reveal, although they never asked to know it? Click them.</div>
+    <div class="q-model"><p><b>Helen</b>, Sienna's mother: Sienna can only have inherited the family's variant through her. Helen is 22 and had not asked to know.</p></div>
+  </div>
+  <div class="q" data-q="e-genome-report">
+    <div class="q-text">The test was done to find the cause of Sienna's hearing loss. Should the EOFAD finding be reported? Think about Sienna, Helen and the rest of the family.</div>
+    <div class="q-model"><p>Points to consider: the finding gives Sienna, a child, a predictive result for an adult-onset condition with no benefit in childhood, taking away her future choice; it reveals Helen's status without her having chosen to know; and it changes the picture for Helen's relatives. On the other hand, the information exists, and might matter to Helen's own decisions, for example about future pregnancies. Genomic tests can generate unexpected or incidental findings that are hard to explain, and whether findings that cannot be acted on should be fed back is a question that consent for genomic testing has to address in advance. Clinical genome tests in the NHS are designed to answer the clinical question, which limits findings like this one.</p></div>
+  </div>
+
+  <h2 id="eth-consent">Consent, confidentiality and genetic data</h2>
+  <p>For consent to be legally valid, the person must have <b>enough appropriate information</b> to make the decision, must be <b>competent</b> to make it, and must give it <b>voluntarily</b>. Case law suggests that “appropriate” information should be patient-centred: what a reasonable patient would want to know, as well as what this particular patient wants to know. Consent in genomics raises particular issues:</p>
+  <ul>
+    <li>Is the test clinical care or research? They are governed very differently.</li>
+    <li>Genomic tests can generate additional, unexpected or incidental findings, which may be hard to explain.</li>
+    <li>Variants can be of uncertain significance because there is not enough evidence to classify them.</li>
+    <li>Should variants that cannot be acted on be fed back to patients?</li>
+    <li>Genetic information about one person allows inferences about the people they are related to.</li>
+  </ul>
+  <p>In the UK, personal data are governed by the <b>Data Protection Act 2018</b> and the <b>UK GDPR</b>. Genetic data are “special category” personal data, along with health and biometric data. Data that can identify a person indirectly – for example data with a study number instead of a name, which could be linked back to the person – can still be personal data. Truly anonymised data are not. The Information Commissioner's Office says that genetic data with enough markers to be unique to an individual is personal data even without a name, although some, such as the PHG Foundation, argue that genomic data are not identifiable unless they can be linked back to a person. Safeguards include managed access, de-identification, the <b>Caldicott principles</b>, trusted research environments and research ethics review.</p>
+  <div class="q" data-q="e-consent" data-type="mcq">
+    <div class="q-text">Which of these is <b>not</b> a requirement for consent to be legally valid?</div>
+    <div class="mcq">
+      <label data-why="This is one of the three requirements: the person needs enough appropriate information."><input type="radio"> The person has enough appropriate information to make the decision</label>
+      <label data-why="This is a requirement: the person must be competent (have capacity) to decide."><input type="radio"> The person is competent to make the decision</label>
+      <label data-why="This is a requirement: consent must be given voluntarily, without pressure."><input type="radio"> The person gives consent voluntarily</label>
+      <label data-correct data-why="A signed form is good practice and records consent, but it does not by itself make consent valid, and valid consent need not be written."><input type="radio"> The person signs a consent form</label>
+    </div>
+  </div>
+  <div class="q" data-q="e-gdpr" data-type="mcq">
+    <div class="q-text">A research team stores whole-genome sequences labelled with a study number instead of a name. Under the UK GDPR, these data are…</div>
+    <div class="mcq">
+      <label data-why="Replacing a name with a study number pseudonymises data; it does not anonymise them, especially when the sequence itself is unique to a person."><input type="radio"> anonymous, so the GDPR does not apply</label>
+      <label data-correct data-why="Pseudonymised data can still be personal data, and the ICO's view is that genetic data with enough markers to be unique to a person is personal data – and special category genetic data – even without a name."><input type="radio"> still personal data, and special category genetic data</label>
+      <label data-why="Research has particular lawful bases and exemptions, but the data are still personal data."><input type="radio"> exempt, because they are used for research</label>
+    </div>
+  </div>
+
+  <h2 id="eth-frameworks">Ways of reasoning about ethics</h2>
+  <table class="table">
+    <tr><th>Approach</th><th>In short</th><th>A common criticism</th></tr>
+    <tr><td>Consequentialist ethics</td><td>What is right is whatever makes the world better in the future; utilitarianism seeks the greatest benefit for the largest number</td><td>Can it justify sacrificing someone, or something, for a greater good?</td></tr>
+    <tr><td>Duty-based ethics</td><td>Actions are right or wrong in themselves; never treat people only as a means to an end; human rights</td><td>Which duties are absolute, and which can be negotiated?</td></tr>
+    <tr><td>Virtue ethics</td><td>Focus on moral character: what would a good person do?</td><td>Good intentions do not guarantee good outcomes</td></tr>
+    <tr><td>Ethics of care</td><td>Focus on relationships; from “what is right?” to “how should I respond?”</td><td>Actions and consequences matter too</td></tr>
+    <tr><td>Principlism</td><td>Autonomy, beneficence, non-maleficence and justice</td><td>Often puts autonomy above other concerns, and can be applied mechanically</td></tr>
+  </table>
+  <div class="q" data-q="e-frame" data-type="mcq">
+    <div class="q-text">A genetic counsellor wonders, “How do I best support this family through this, given how they relate to each other?” Which approach is that closest to?</div>
+    <div class="mcq">
+      <label data-why="Consequentialism would ask which choice leads to the best overall outcome."><input type="radio"> Consequentialist ethics</label>
+      <label data-why="Duty-based ethics would ask which rules or duties apply."><input type="radio"> Duty-based ethics</label>
+      <label data-correct data-why="The ethics of care focuses on relationships and on how to respond, rather than on finding the single right action."><input type="radio"> Ethics of care</label>
+    </div>
+  </div>
+
+  <h2 id="eth-eugenics">Eugenics never left?</h2>
+  <p>Genetics began, in part, as a science of breeding. In the late 19th and early 20th centuries, scientific and political worries about “degeneration” led to eugenics: <b>coercive</b> eugenics used force to try to improve the population, while <b>non-coercive</b> eugenics used education, information and social norms. The distinction is not sharp, and it does not map neatly onto right and wrong. Medical genetics is sometimes accused of being a “new eugenics” working at the level of the gene. When prenatal screening is standard care, every pregnant woman has to consider the choice whether or not she sought it out; the number of babies born with Down syndrome in England and Wales is well below what it would be without prenatal diagnosis (Wu &amp; Morris, <i>Eur J Hum Genet</i> 2013). Genome-wide association studies of traits such as educational attainment have also been reported in the press in ways their authors may not have intended.</p>
+  <div class="q" data-q="e-eugenics">
+    <div class="q-text">The lecture asks: “Is the work you are part of safe from eugenic connections?” Choose a piece of genetics or genomics work you know about. How could it be used, or reported, in ways its authors did not intend, and what could they do about it?</div>
+    <div class="q-model"><p>There is no single answer. Good answers recognise that researchers are responsible for the questions their research asks; that results about groups or traits can be misreported or misused; and that steps such as involving patients and the public, careful choice of research questions and population descriptors, clear communication of what results do and do not mean, and being willing to decline to take part all help.</p></div>
+  </div>
+  <div class="q" data-q="e-final">
+    <div class="q-text">Which of the five scenarios did you find hardest, and why?</div>
+  </div>
+  <p><button class="btn primary" type="button" data-export-answers>Download my answers and pedigrees</button></p>
+</section>
+
+<!-- =====================================================================
+     REFERENCE
+     ===================================================================== -->
+<section class="chapter" id="reference" data-num="R" data-title="Reference" hidden>
+  <h1>Reference</h1>
+
+  <h2 id="ref-symbols">Pedigree symbols</h2>
+  <table class="symtab" data-symbols="all"></table>
+
+  <h2 id="ref-studio">Using Pedigree Studio</h2>
+  <table class="table">
+    <tr><th>To…</th><th>Do this</th></tr>
+    <tr><td>Add someone on their own</td><td><b>Male</b>, <b>Female</b>, <b>Unknown</b> or <b>Loss</b> on the toolbar; <b>More</b> for adopted people, the no-children and infertility symbols, and text labels</td></tr>
+    <tr><td>Add a relative of someone</td><td>Select them, then use <b>Add a relative</b> in the panel. Select a relationship line to add a child of that couple</td></tr>
+    <tr><td>Join people yourself</td><td><b>Partners</b>: click two people. <b>Child</b>: click a relationship line, then the child. <b>Twins</b>: click two children of the same couple</td></tr>
+    <tr><td>Change a line</td><td>Click it: relationship lines can be consanguineous or separated; lines of descent can be dashed (adopted in)</td></tr>
+    <tr><td>Change the order of brothers and sisters</td><td>Select one and use <b>◀ Older</b> or <b>Younger ▶</b></td></tr>
+    <tr><td>Move people</td><td>Drag them. Dragging moves the connected family; <b>File → Move one person at a time</b> changes that. <b>Tidy</b> rearranges the whole pedigree (you can undo it)</td></tr>
+    <tr><td>Move around</td><td>Drag the background; scroll or pinch to zoom; the fit button at the bottom right shows everything</td></tr>
+    <tr><td>Select several people</td><td><span class="kbd">Shift</span> + click</td></tr>
+    <tr><td>Undo, redo, delete</td><td><span class="kbd">Ctrl</span>+<span class="kbd">Z</span>, <span class="kbd">Ctrl</span>+<span class="kbd">Y</span>, <span class="kbd">Delete</span> (<span class="kbd">⌘</span> on a Mac)</td></tr>
+    <tr><td>Save or export</td><td><b>File</b>: a picture (PNG or SVG) or a pedigree file (.json) to open again later</td></tr>
+  </table>
+  <p>Pedigree Studio also works on its own, without this practical: <a href="studio/index.html" target="_blank" rel="noopener">open the drawing tool by itself</a>, or use the full version at <a href="https://pedigreestudio.xyz/" target="_blank" rel="noopener">pedigreestudio.xyz</a>. Everything runs in your browser.</p>
+
+  <h2 id="ref-glossary">Glossary</h2>
+  <table class="table">
+    <tr><td><b>Proband</b></td><td>The person through whom a family comes to medical attention; usually the person the pedigree is drawn for. Marked with an arrow</td></tr>
+    <tr><td><b>Consultand</b></td><td>The person seeking advice, who may not be affected. Formal nomenclature distinguishes the two; in clinic the arrow usually marks the person in front of you</td></tr>
+    <tr><td><b>Sibship</b></td><td>A set of brothers and sisters</td></tr>
+    <tr><td><b>Consanguinity</b></td><td>Partners who are related by blood, for example cousins</td></tr>
+    <tr><td><b>Carrier</b></td><td>Someone with one copy of a recessive (or X-linked) variant who is not affected</td></tr>
+    <tr><td><b>Obligate carrier</b></td><td>Someone who must carry a variant, judging from the pedigree, whether or not they have been tested</td></tr>
+    <tr><td><b>Penetrance</b></td><td>The proportion of people with a variant who develop the condition</td></tr>
+    <tr><td><b>Expressivity</b></td><td>How severely, or in what way, a condition shows itself in a person who has it</td></tr>
+    <tr><td><b>Predictive (presymptomatic) testing</b></td><td>Testing a healthy person for a variant that could cause a condition later in life</td></tr>
+    <tr><td><b>Cascade testing</b></td><td>Offering testing to relatives step by step, starting with the closest relatives of someone with a known variant</td></tr>
+    <tr><td><b>Segregation analysis</b></td><td>Checking whether a variant is found in affected relatives and not in unaffected ones</td></tr>
+    <tr><td><b>VUS</b></td><td>Variant of uncertain significance: there is not enough evidence to say whether it causes disease</td></tr>
+    <tr><td><b>CVS</b></td><td>Chorionic villus sampling: a sample of the placenta taken for prenatal diagnosis</td></tr>
+    <tr><td><b>Exclusion testing</b></td><td>A prenatal test that shows which grandparent a pregnancy inherited a region of chromosome from, without revealing the at-risk parent's own status</td></tr>
+    <tr><td><b>dx · d. · A&amp;W</b></td><td>Diagnosed (at age) · died (at age) · alive and well</td></tr>
+  </table>
+
+  <h2 id="ref-staff">For teaching staff</h2>
+  <ul>
+    <li>Settings are in <code>assets/js/config.js</code>. Set <code>showModelAnswers: false</code> to hide the <b>Show answer</b> buttons; adding <code>?answers</code> to the page address shows them anyway.</li>
+    <li>The families are in <code>data/pedigrees/</code> and the interviews in <code>data/interviews/</code>; the README explains how to edit them or add new ones.</li>
+    <li>Students' work is saved only in their own browser. They hand it in by downloading <b>My answers</b>, which includes their answers, interview transcripts and pictures of their pedigrees.</li>
+  </ul>
+
+  <h2 id="ref-credits">Sources and credits</h2>
+  <ul>
+    <li>Adapted from two sessions of <i>GM1B Introduction to Human Genetics and Genomics</i>: the <b>Genomics Workshop: Taking and Drawing a Family Tree</b> by Madelaine Corcoran and Jaskiran Gill (Addenbrooke's Clinical Genetics Department), and the lecture <b>‘Ethics’, legal and governance issues in genetics and genomics</b> by Dr Tim Hearn. The families in the ethics scenarios and the cystic fibrosis and <i>BRCA2</i> scenarios are from these sessions; the interviews, the Okafor family and families A to D were written for this practical.</li>
+    <li>Drawing tool: <b>Pedigree Studio</b> by Timothy J Hearn (MIT licence), <a href="https://github.com/comparativechrono/PedigreeStudio" target="_blank" rel="noopener">github.com/comparativechrono/PedigreeStudio</a>.</li>
+    <li>Pedigree nomenclature: Bennett RL <i>et al.</i> (2008) Standardized human pedigree nomenclature: update and assessment of the recommendations of the National Society of Genetic Counselors. <i>J Genet Couns</i> 17:424–433. Bennett RL <i>et al.</i> (2022) Standardized pedigree nomenclature update centered on sex and gender inclusivity. <i>J Genet Couns</i> 31:1238–1248.</li>
+    <li>Health Education England Genomics Education Programme: <a href="https://www.genomicseducation.hee.nhs.uk/taking-and-drawing-a-family-history/" target="_blank" rel="noopener">Taking and drawing a family history</a>.</li>
+    <li>Cystic fibrosis figures: the Cystic Fibrosis Trust (<a href="https://www.cysticfibrosis.org.uk/" target="_blank" rel="noopener">cysticfibrosis.org.uk</a>). CVS: <a href="https://www.nhs.uk/tests-and-treatments/chorionic-villus-sampling-cvs/" target="_blank" rel="noopener">NHS – chorionic villus sampling</a>.</li>
+    <li><i>SPRED1</i> families: <i>J Med Genet</i> 2009;46:425–430, doi:10.1136/jmg.2008.065243. Down syndrome prevalence: Wu J, Morris JK (2013) <i>Eur J Hum Genet</i> 21:1016–1019.</li>
+    <li><i>ABC v St George's Healthcare NHS Trust</i> [2020] EWHC 455 (QB).</li>
+  </ul>
+</section>
+
+    </aside>
+
+    <div class="splitter" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Resize the tutorial and workbench" title="Drag to resize · double-click to reset"></div>
+
+    <!-- ============================ WORKBENCH ============================ -->
+    <section class="bench" aria-label="Workbench">
+      <div class="wb-tabs" role="tablist">
+        <button class="wb-tab on" type="button" role="tab" data-wb="pedigree"><svg class="ic" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="2.5" y="3" width="6" height="6"/><circle cx="18.5" cy="6" r="3.2"/><path d="M8.5 6h6.8M12 6v7M6 13h12M6 13v4M18 13v4"/><rect x="3" y="17" width="6" height="5"/><circle cx="18" cy="19.5" r="2.5"/></svg>Pedigree<span class="dot"></span></button>
+        <button class="wb-tab" type="button" role="tab" data-wb="inherit"><svg class="ic" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 3c0 6 10 6 10 12s-10 3-10 6M17 3c0 6-10 6-10 12s10 3 10 6M8 7h8M8 17h8M9.5 12h5"/></svg>Inheritance<span class="dot"></span></button>
+        <button class="bench-close" type="button" aria-label="Back to the tutorial">✕ Tutorial</button>
+      </div>
+      <div class="wb-body">
+        <div class="wb-pane" data-wb="pedigree">
+          <div class="ped-bar">
+            <label class="ped-pick"><span>Pedigree</span><select id="pedSelect" aria-label="Which pedigree to show"></select></label>
+            <button class="btn small" id="pedReset" type="button" title="Undo all your changes to this pedigree">Start again</button>
+          </div>
+          <iframe id="studioFrame" src="studio/index.html?embed=1" title="Pedigree Studio"></iframe>
+        </div>
+        <div class="wb-pane inh-root" data-wb="inherit" hidden><div id="inheritRoot"></div></div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<button class="bench-fab" type="button" aria-label="Open the pedigree workbench"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="2.5" y="3" width="6" height="6"/><circle cx="18.5" cy="6" r="3.2"/><path d="M8.5 6h6.8M12 6v7M6 13h12M6 13v4M18 13v4"/><rect x="3" y="17" width="6" height="5"/><circle cx="18" cy="19.5" r="2.5"/></svg>Workbench</button>
+<noscript><p style="padding:20px">This page needs JavaScript.</p></noscript>
+
+<script src="assets/js/config.js"></script>
+<script src="assets/js/core.js"></script>
+<script src="assets/js/pedigree.js"></script>
+<script src="assets/js/symbols.js"></script>
+<script src="assets/js/bench.js"></script>
+<script src="assets/js/inherit.js"></script>
+<script src="assets/js/interview.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>

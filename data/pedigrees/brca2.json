@@ -1,0 +1,30 @@
+{
+  "id": "brca2",
+  "title": "BRCA2: Jane and Adam",
+  "about": "From the workshop: Jane is pregnant. Adam's sister had breast cancer at 34 and a BRCA2 variant has been found.",
+  "colours": {"breast": "#d63384", "ovary": "#8e44ad"},
+  "key": {"breast": "Breast cancer", "ovary": "Ovarian cancer"},
+  "keyAt": [14, 0],
+  "people": [
+    {"id": "gf", "sex": "M", "gen": 0, "x": 4, "deceased": true, "text": "d.\nno cancer; stroke", "label": "Adam's grandfather"},
+    {"id": "gm", "sex": "F", "gen": 0, "x": 6, "deceased": true, "text": "d.\ncancer?\nJewish ancestry", "label": "Adam's grandmother"},
+    {"id": "dad", "sex": "M", "gen": 1, "x": 1.5, "text": "no information", "label": "Adam's father"},
+    {"id": "mum", "sex": "F", "gen": 1, "x": 3.5, "affected": "breast", "text": "60\nbreast cancer dx 47", "label": "Adam's mother"},
+    {"id": "aunt", "sex": "F", "gen": 1, "x": 6.5, "deceased": true, "affected": "ovary", "text": "d. 65\novarian cancer dx 65", "label": "Adam's aunt"},
+    {"id": "jdad", "sex": "M", "gen": 1, "x": 10, "text": "A&W", "label": "Jane's father"},
+    {"id": "jmum", "sex": "F", "gen": 1, "x": 12, "text": "A&W", "label": "Jane's mother"},
+    {"id": "sis1", "sex": "F", "gen": 2, "x": 0.5, "affected": "breast", "text": "35\nbreast cancer dx 34\nBRCA2 c.5946delT", "label": "Adam's elder sister"},
+    {"id": "sis2", "sex": "F", "gen": 2, "x": 2.5, "text": "30", "label": "Adam's younger sister"},
+    {"id": "adam", "sex": "M", "gen": 2, "x": 5, "text": "Adam, 31", "name": "Adam", "label": "Adam"},
+    {"id": "jane", "sex": "F", "gen": 2, "x": 7, "proband": true, "text": "Jane, 29", "name": "Jane", "label": "Jane"},
+    {"id": "jbro", "sex": "M", "gen": 2, "x": 11.5, "text": "20", "label": "Jane's brother"},
+    {"id": "preg", "sex": "U", "gen": 3, "x": 6, "pregnancy": true, "label": "the pregnancy"}
+  ],
+  "couples": [["gf", "gm"], ["dad", "mum"], ["jdad", "jmum"], ["adam", "jane"]],
+  "children": [
+    {"of": ["gf", "gm"], "kids": ["mum", "aunt"]},
+    {"of": ["dad", "mum"], "kids": ["sis1", "sis2", "adam"]},
+    {"of": ["jdad", "jmum"], "kids": ["jane", "jbro"]},
+    {"of": ["adam", "jane"], "kids": ["preg"]}
+  ]
+}

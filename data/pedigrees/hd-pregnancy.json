@@ -1,0 +1,32 @@
+{
+  "id": "hd-pregnancy",
+  "title": "Scenario 4: Huntington’s disease and pregnancy",
+  "about": "From the ethics lecture, scenario 4. Martha has the HD expansion and is 8 weeks pregnant; her sister Josie is pregnant too.",
+  "colours": {"hd": "#f1c40f"},
+  "key": {"hd": "Huntington’s, with symptoms"},
+  "keyAt": [11, 0],
+  "people": [
+    {"id": "ggf", "sex": "M", "gen": 0, "x": 6, "deceased": true, "affected": "hd", "label": "Helen's grandfather"},
+    {"id": "ggm", "sex": "F", "gen": 0, "x": 8, "deceased": true, "label": "Helen's grandmother"},
+    {"id": "gm", "sex": "F", "gen": 1, "x": 4, "text": "69", "label": "Helen's mother"},
+    {"id": "gf", "sex": "M", "gen": 1, "x": 6, "deceased": true, "affected": "hd", "text": "d. 60", "label": "Helen's father"},
+    {"id": "guncle", "sex": "M", "gen": 1, "x": 9, "label": "Helen's uncle"},
+    {"id": "helenh", "sex": "M", "gen": 2, "x": 2.5, "label": "Helen's husband"},
+    {"id": "helen", "sex": "F", "gen": 2, "x": 4.5, "affected": "hd", "text": "Helen, 48", "name": "Helen", "label": "Helen"},
+    {"id": "paul", "sex": "M", "gen": 2, "x": 7, "text": "Paul, 39", "name": "Paul", "label": "Paul (Helen's brother)"},
+    {"id": "josiep", "sex": "M", "gen": 3, "x": 0.5, "label": "Josie's former partner"},
+    {"id": "josie", "sex": "F", "gen": 3, "x": 2.5, "text": "Josie, 25", "name": "Josie", "label": "Josie"},
+    {"id": "martha", "sex": "F", "gen": 3, "x": 4.5, "proband": true, "carrier": true, "text": "Martha, 23\nHD expansion, no symptoms", "name": "Martha", "label": "Martha"},
+    {"id": "garth", "sex": "M", "gen": 3, "x": 6.5, "text": "Garth, 25", "name": "Garth", "label": "Garth"},
+    {"id": "jpreg", "sex": "U", "gen": 4, "x": 1.5, "pregnancy": true, "text": "8 weeks", "label": "Josie's pregnancy"},
+    {"id": "mpreg", "sex": "U", "gen": 4, "x": 5.5, "pregnancy": true, "text": "8 weeks", "label": "Martha and Garth's pregnancy"}
+  ],
+  "couples": [["ggf", "ggm"], ["gm", "gf"], ["helenh", "helen"], {"a": "josiep", "b": "josie", "type": "separated"}, ["martha", "garth"]],
+  "children": [
+    {"of": ["ggf", "ggm"], "kids": ["gf", "guncle"]},
+    {"of": ["gm", "gf"], "kids": ["helen", "paul"]},
+    {"of": ["helenh", "helen"], "kids": ["josie", "martha"]},
+    {"of": ["josiep", "josie"], "kids": ["jpreg"]},
+    {"of": ["martha", "garth"], "kids": ["mpreg"]}
+  ]
+}

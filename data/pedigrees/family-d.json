@@ -1,0 +1,26 @@
+{
+  "id": "family-d",
+  "title": "Family D",
+  "about": "Breast cancer in three generations.",
+  "key": {"#1a2332": "Breast cancer"},
+  "keyAt": [11.5, 0],
+  "people": [
+    {"id": "i1", "sex": "M", "gen": 0, "x": 4, "deceased": true, "text": "d. 81", "label": "I-1"},
+    {"id": "i2", "sex": "F", "gen": 0, "x": 6, "deceased": true, "affected": true, "text": "d. 51\nbreast cancer dx 44", "label": "I-2"},
+    {"id": "ii1", "sex": "M", "gen": 1, "x": 0.5, "text": "70", "label": "II-1"},
+    {"id": "ii2", "sex": "F", "gen": 1, "x": 2.5, "affected": true, "text": "68\nbreast cancer dx 39", "label": "II-2"},
+    {"id": "ii3", "sex": "M", "gen": 1, "x": 5.5, "text": "66\nwell", "label": "II-3"},
+    {"id": "ii4", "sex": "F", "gen": 1, "x": 7.5, "text": "64", "label": "II-4"},
+    {"id": "ii5", "sex": "F", "gen": 1, "x": 9.5, "text": "61\nwell", "label": "II-5"},
+    {"id": "iii1", "sex": "M", "gen": 2, "x": 0.5, "text": "44", "label": "III-1"},
+    {"id": "iii2", "sex": "F", "gen": 2, "x": 2.5, "affected": true, "text": "42\nbreast cancer dx 37", "label": "III-2"},
+    {"id": "iii3", "sex": "F", "gen": 2, "x": 5.5, "affected": true, "text": "38\nbreast cancer dx 35", "label": "III-3"},
+    {"id": "iii4", "sex": "M", "gen": 2, "x": 7.5, "text": "35", "label": "III-4"}
+  ],
+  "couples": [["i1", "i2"], ["ii1", "ii2"], ["ii3", "ii4"]],
+  "children": [
+    {"of": ["i1", "i2"], "kids": ["ii2", "ii3", "ii5"]},
+    {"of": ["ii1", "ii2"], "kids": ["iii1", "iii2"]},
+    {"of": ["ii3", "ii4"], "kids": ["iii3", "iii4"]}
+  ]
+}

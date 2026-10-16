@@ -1,0 +1,30 @@
+{
+  "id": "cf",
+  "title": "Cystic fibrosis: David and Lisa",
+  "about": "From the workshop: David's sister Amelia has cystic fibrosis. David and Lisa are expecting a baby.",
+  "colours": {"cf": "#16a085"},
+  "key": {"cf": "Cystic fibrosis"},
+  "keyAt": [12, 0],
+  "people": [
+    {"id": "lgf", "sex": "M", "gen": 0, "x": 1, "label": "Lisa's grandfather"},
+    {"id": "lgm", "sex": "F", "gen": 0, "x": 3, "label": "Lisa's grandmother"},
+    {"id": "dgf", "sex": "M", "gen": 0, "x": 7.5, "label": "David's grandfather"},
+    {"id": "dgm", "sex": "F", "gen": 0, "x": 9.5, "label": "David's grandmother"},
+    {"id": "michael", "sex": "M", "gen": 1, "x": 2, "text": "Michael", "label": "Michael (Lisa's father)"},
+    {"id": "anne", "sex": "F", "gen": 1, "x": 4, "text": "Anne", "label": "Anne (Lisa's mother)"},
+    {"id": "philip", "sex": "M", "gen": 1, "x": 8.5, "text": "Philip", "label": "Philip (David's father)"},
+    {"id": "ruth", "sex": "F", "gen": 1, "x": 10.5, "text": "Ruth", "label": "Ruth (David's mother)"},
+    {"id": "lisa", "sex": "F", "gen": 2, "x": 4.5, "text": "Lisa", "label": "Lisa"},
+    {"id": "david", "sex": "M", "gen": 2, "x": 6.5, "proband": true, "text": "David", "label": "David"},
+    {"id": "amelia", "sex": "F", "gen": 2, "x": 9, "affected": "cf", "text": "Amelia\ncystic fibrosis", "label": "Amelia"},
+    {"id": "preg", "sex": "U", "gen": 3, "x": 5.5, "pregnancy": true, "label": "the pregnancy"}
+  ],
+  "couples": [["lgf", "lgm"], ["dgf", "dgm"], ["michael", "anne"], ["philip", "ruth"], ["lisa", "david"]],
+  "children": [
+    {"of": ["lgf", "lgm"], "kids": ["michael"]},
+    {"of": ["dgf", "dgm"], "kids": ["philip"]},
+    {"of": ["michael", "anne"], "kids": ["lisa"]},
+    {"of": ["philip", "ruth"], "kids": ["david", "amelia"]},
+    {"of": ["lisa", "david"], "kids": ["preg"]}
+  ]
+}

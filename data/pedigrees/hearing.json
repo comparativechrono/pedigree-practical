@@ -1,0 +1,40 @@
+{
+  "id": "hearing",
+  "title": "Scenario 5: hearing loss and a genome",
+  "about": "From the ethics lecture, scenario 5. Helen's baby Sienna has profound hearing loss and has had her genome sequenced.",
+  "colours": {"hearing": "#8e44ad"},
+  "key": {"hearing": "Profound hearing loss from birth"},
+  "keyAt": [13.5, 0],
+  "people": [
+    {"id": "ggf", "sex": "M", "gen": 0, "x": 9, "deceased": true, "label": "Henry's father"},
+    {"id": "ggm", "sex": "F", "gen": 0, "x": 11, "deceased": true, "label": "Henry's mother"},
+    {"id": "tf", "sex": "M", "gen": 1, "x": 1.5, "label": "Tom's father"},
+    {"id": "tm", "sex": "F", "gen": 1, "x": 3.5, "deceased": true, "label": "Tom's mother"},
+    {"id": "gwen", "sex": "F", "gen": 1, "x": 7, "text": "Gwen, 67", "name": "Gwen", "label": "Gwen (May's mother)"},
+    {"id": "henry", "sex": "M", "gen": 1, "x": 9, "deceased": true, "text": "Henry, d. 60", "name": "Henry", "label": "Henry (May's father)"},
+    {"id": "hsis", "sex": "F", "gen": 1, "x": 12, "label": "Henry's sister"},
+    {"id": "tsis", "sex": "F", "gen": 2, "x": 0.5, "label": "Tom's sister"},
+    {"id": "tom", "sex": "M", "gen": 2, "x": 3.5, "text": "Tom", "name": "Tom", "label": "Tom (the sisters' father)"},
+    {"id": "may", "sex": "F", "gen": 2, "x": 5.5, "text": "May, 49", "name": "May", "label": "May (the sisters' mother)"},
+    {"id": "philip", "sex": "M", "gen": 2, "x": 8.5, "text": "Philip, 43", "name": "Philip", "label": "Philip (May's brother)"},
+    {"id": "sallyp", "sex": "M", "gen": 3, "x": 0.5, "label": "Sally's partner"},
+    {"id": "sally", "sex": "F", "gen": 3, "x": 2.5, "proband": false, "text": "Sally, 29", "name": "Sally", "label": "Sally"},
+    {"id": "emma", "sex": "F", "gen": 3, "x": 5.5, "text": "Emma, 24", "name": "Emma", "label": "Emma"},
+    {"id": "emmap", "sex": "M", "gen": 3, "x": 7.5, "label": "Emma's partner"},
+    {"id": "helen", "sex": "F", "gen": 3, "x": 9.5, "text": "Helen, 22", "name": "Helen", "label": "Helen"},
+    {"id": "ryan", "sex": "M", "gen": 4, "x": 1.5, "text": "Ryan, 6", "name": "Ryan", "label": "Ryan (Sally's son)"},
+    {"id": "sean", "sex": "M", "gen": 4, "x": 6.5, "text": "Sean, 6", "name": "Sean", "label": "Sean (Emma's son)"},
+    {"id": "helenp", "sex": "M", "gen": 3, "x": 11.5, "label": "Helen's partner"},
+    {"id": "sienna", "sex": "F", "gen": 4, "x": 10.5, "affected": "hearing", "carrier": true, "text": "Sienna, 18 months\ngenome: EOFAD variant", "name": "Sienna", "label": "Sienna (Helen's daughter)", "proband": true}
+  ],
+  "couples": [["ggf", "ggm"], ["tf", "tm"], ["gwen", "henry"], ["tom", "may"], ["sallyp", "sally"], ["emma", "emmap"], ["helen", "helenp"]],
+  "children": [
+    {"of": ["ggf", "ggm"], "kids": ["henry", "hsis"]},
+    {"of": ["tf", "tm"], "kids": ["tsis", "tom"]},
+    {"of": ["gwen", "henry"], "kids": ["may", "philip"]},
+    {"of": ["tom", "may"], "kids": ["sally", "emma", "helen"]},
+    {"of": ["sallyp", "sally"], "kids": ["ryan"]},
+    {"of": ["emma", "emmap"], "kids": ["sean"]},
+    {"of": ["helen", "helenp"], "kids": ["sienna"]}
+  ]
+}

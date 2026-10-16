@@ -1,0 +1,36 @@
+{
+  "id": "price",
+  "title": "The Price family",
+  "about": "Model answer for interview 2. Megan's mother had breast cancer at 42 and her aunt had ovarian cancer.",
+  "colours": {"breast": "#c0392b", "ovary": "#8e44ad", "prostate": "#f1c40f"},
+  "key": {"breast": "Breast cancer", "ovary": "Ovarian cancer", "prostate": "Prostate cancer"},
+  "keyAt": [16.5, 0],
+  "check": {"ignore": ["jean.affected"]},
+  "people": [
+    {"id": "ron", "sex": "M", "gen": 0, "x": 1.75, "deceased": true, "text": "Ron, d. 70\nheart attack", "name": "Ron", "label": "Ron (Megan's grandfather)"},
+    {"id": "pat", "sex": "F", "gen": 0, "x": 3.75, "text": "Pat, 82", "name": "Pat", "label": "Pat (Megan's grandmother)"},
+    {"id": "bill", "sex": "M", "gen": 0, "x": 9, "affected": "prostate", "text": "Bill, 84\nprostate cancer dx 79", "name": "Bill", "label": "Bill (Megan's grandfather)"},
+    {"id": "jean", "sex": "F", "gen": 0, "x": 11, "deceased": true, "text": "Jean, d. 47\n?breast cancer", "name": "Jean", "label": "Jean (Megan's grandmother)"},
+    {"id": "paul", "sex": "M", "gen": 1, "x": 0.5, "text": "Paul, 62", "name": "Paul", "label": "Paul (Megan's uncle)"},
+    {"id": "lisa", "sex": "F", "gen": 1, "x": 3, "text": "Lisa, 52", "name": "Lisa", "label": "Lisa (Steve's wife)"},
+    {"id": "steve", "sex": "M", "gen": 1, "x": 5, "text": "Steve, 60", "name": "Steve", "label": "Steve (Megan's father)"},
+    {"id": "karen", "sex": "F", "gen": 1, "x": 7.5, "affected": "breast", "text": "Karen, 58\nbreast cancer dx 42\ngene test 2010:\nno variant found", "name": "Karen", "label": "Karen (Megan's mother)"},
+    {"id": "julie", "sex": "F", "gen": 1, "x": 10.5, "deceased": true, "affected": "ovary", "text": "Julie, d. 52\novarian cancer dx 50", "name": "Julie", "label": "Julie (Megan's aunt)"},
+    {"id": "mark", "sex": "M", "gen": 1, "x": 13, "text": "Mark, 53", "name": "Mark", "label": "Mark (Megan's uncle)"},
+    {"id": "sarah", "sex": "F", "gen": 1, "x": 15, "text": "Sarah, 51", "name": "Sarah", "label": "Sarah (Mark's wife)"},
+    {"id": "josh", "sex": "M", "gen": 2, "x": 4, "text": "Josh, 19", "name": "Josh", "label": "Josh (Megan's half-brother)"},
+    {"id": "megan", "sex": "F", "gen": 2, "x": 6.5, "proband": true, "text": "Megan, 31", "name": "Megan", "label": "Megan (the proband)"},
+    {"id": "ryan", "sex": "M", "gen": 2, "x": 8.5, "text": "Ryan, 28", "name": "Ryan", "label": "Ryan (Megan's brother)"},
+    {"id": "luke", "sex": "M", "gen": 2, "x": 10, "text": "Luke, 28", "name": "Luke", "label": "Luke (Megan's brother)"},
+    {"id": "amy", "sex": "F", "gen": 2, "x": 14, "adopted": true, "text": "Amy, 15", "name": "Amy", "label": "Amy (Megan's adopted cousin)"}
+  ],
+  "couples": [["ron", "pat"], ["bill", "jean"], ["lisa", "steve"], {"a": "steve", "b": "karen", "type": "separated"}, ["mark", "sarah"]],
+  "children": [
+    {"of": ["ron", "pat"], "kids": ["paul", "steve"]},
+    {"of": ["bill", "jean"], "kids": ["karen", "julie", "mark"]},
+    {"of": ["lisa", "steve"], "kids": ["josh"]},
+    {"of": ["steve", "karen"], "kids": ["megan", "ryan", "luke"]},
+    {"of": ["mark", "sarah"], "kids": ["amy"], "adoptedIn": ["amy"]}
+  ],
+  "twins": [{"a": "ryan", "b": "luke", "type": "identical"}]
+}

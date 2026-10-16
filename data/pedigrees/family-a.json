@@ -1,0 +1,26 @@
+{
+  "id": "family-a",
+  "title": "Family A",
+  "about": "Which pattern of inheritance fits best?",
+  "people": [
+    {"id": "i1", "sex": "M", "gen": 0, "x": 4, "affected": true, "label": "I-1"},
+    {"id": "i2", "sex": "F", "gen": 0, "x": 6, "label": "I-2"},
+    {"id": "h1", "sex": "M", "gen": 1, "x": 1, "label": "II-1"},
+    {"id": "a", "sex": "F", "gen": 1, "x": 3, "affected": true, "label": "II-2"},
+    {"id": "b", "sex": "M", "gen": 1, "x": 5.5, "label": "II-3"},
+    {"id": "c", "sex": "M", "gen": 1, "x": 8, "affected": true, "label": "II-4"},
+    {"id": "w", "sex": "F", "gen": 1, "x": 10, "label": "II-5"},
+    {"id": "d", "sex": "M", "gen": 2, "x": 0.5, "affected": true, "label": "III-1"},
+    {"id": "e", "sex": "F", "gen": 2, "x": 2.5, "label": "III-2"},
+    {"id": "f", "sex": "F", "gen": 2, "x": 4, "affected": true, "label": "III-3"},
+    {"id": "g", "sex": "M", "gen": 2, "x": 7.5, "affected": true, "label": "III-4"},
+    {"id": "h", "sex": "F", "gen": 2, "x": 9.5, "label": "III-5"},
+    {"id": "i", "sex": "F", "gen": 2, "x": 11.5, "affected": true, "label": "III-6"}
+  ],
+  "couples": [["i1", "i2"], ["h1", "a"], ["c", "w"]],
+  "children": [
+    {"of": ["i1", "i2"], "kids": ["a", "b", "c"]},
+    {"of": ["h1", "a"], "kids": ["d", "e", "f"]},
+    {"of": ["c", "w"], "kids": ["g", "h", "i"]}
+  ]
+}

@@ -1,0 +1,7260 @@
+// ═════════════════════════════════════════════════════════════════════
+// PEDIGREE STUDIO ENGINE (practical edition)
+//
+// This is the drawing engine of Pedigree Studio by Timothy J Hearn
+// (https://github.com/comparativechrono/PedigreeStudio, MIT licence; see
+// studio/LICENSE), copied from the script in PedigreeStudio's index.html
+// at commit f3e5660 (16 October 2026, v5.1.5).
+//
+// Changes from that file, kept as small as possible so that later
+// versions of Pedigree Studio can be copied in the same way:
+//   1. The browser-storage key is a variable, PS_SESSION_KEY, instead of
+//      the fixed name 'pedigree-studio-session'.
+//   2. saveAsSVG() is split in two: buildPedigreeSVG() returns the SVG
+//      text, and saveAsSVG() downloads it. The practical uses the first
+//      to put students' pedigrees into their downloaded answers.
+//   3. The start-up block at the end of the original script has moved to
+//      studio/practical.js, which runs it after setting up the practical.
+// Everything else is unchanged.
+// ═════════════════════════════════════════════════════════════════════
+
+// ═════════════════════════════════════════════════════
+// PEDIGREE STUDIO v2
+// ═════════════════════════════════════════════════════
+
+function getPointerPos(e) {
+  if (e.touches && e.touches.length > 0) return { clientX: e.touches[0].clientX, clientY: e.touches[0].clientY };
+  if (e.changedTouches && e.changedTouches.length > 0) return { clientX: e.changedTouches[0].clientX, clientY: e.changedTouches[0].clientY };
+  return { clientX: e.clientX, clientY: e.clientY };
+}
+
+// ── State ──
+let currentTool = 'move';
+let personIdCounter = 0;
+let labelIdCounter = 0;
+let lineIdCounter = 0;
+let selectedPerson = null;
+let selectedLabel = null;
+let selectedPartnershipId = null;
+let selectedChildLinkId = null;
+let linkDeleteBtn = null;
+let connectSource = null;
+let childPartnershipSource = null;
+let dragState = null;
+let nudgeState = null;
+let currentShape = 'male';
+let individualMoveMode = false;
+let panState = null;
+let currentLabelSize = 14;
+let activeQuarter = -1; // which quarter is being edited
+let activeHalf = -1;   // which half is being edited (0=left, 1=right)
+
+const SHAPE_SIZE = 52;
+const SHAPE_HALF = 26;
+let partnerGap = SHAPE_SIZE * 2;
+let childHeight = SHAPE_SIZE * 2.5;
+const BRANCH_Y_OFFSET = 5; // offset for branch lines when partner is between siblings (≥ 2×STROKE_W)
+const BRIDGE_RADIUS = 6;   // semicircle radius for line crossing bridges
+
+const FILL_COLORS = [
+  '#1a2332','#c0392b','#2980b9','#27ae60','#e67e22',
+  '#8e44ad','#f1c40f','#16a085','#d35400','#7f8c8d'
+];
+
+const persons = new Map();
+const labels = new Map();
+const partnerships = [];
+const childLinks = [];
+const twinLinks = [];
+const multiSelected = new Set();
+const multiSelectedPartnerships = new Set();
+const multiSelectedChildLinks = new Set();
+let multiActiveQuarter = -1;
+let multiActiveHalf = -1;
+let legendLabels = {};
+let numberingMode = 'numbers';
+let currentPartnershipType = 'normal';
+let currentTwinType = 'identical';
+let twinSource = null; // { '#c0392b': 'Breast cancer', ... }
+
+let zoomLevel = 1, panX = 0, panY = 0;
+
+// ── Draw tool state ──
+const drawStrokes = [];         // completed strokes: [{ points: [{x,y}...], color, width, el }]
+let drawState = null;           // active stroke in progress
+let drawColor = '#c0392b';      // current draw colour
+let drawLineWidth = 2;          // current draw line width
+const DRAW_COLORS = ['#1a2332','#c0392b','#2980b9','#27ae60','#e67e22','#8e44ad','#7f8c8d','#d35400'];
+let drawEraser = false;          // eraser sub-mode within draw tool
+
+// ── Dynamic canvas sizing ──
+// Canvas starts at 6000×6000 and auto-expands when content nears the edge.
+let canvasWidth = 6000, canvasHeight = 6000;
+
+function expandCanvasIfNeeded() {
+  const margin = 600;       // extra space added when expanding
+  const threshold = 200;    // trigger expansion when content is within this distance of edge
+  let maxX = 0, maxY = 0;
+
+  persons.forEach(p => {
+    const x = parseFloat(p.el.style.left) + SHAPE_SIZE + threshold;
+    const y = parseFloat(p.el.style.top) + SHAPE_SIZE + threshold;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+  });
+  labels.forEach(l => {
+    const x = parseFloat(l.el.style.left) + (l.el.offsetWidth || 200) + threshold;
+    const y = parseFloat(l.el.style.top) + (l.el.offsetHeight || 40) + threshold;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+  });
+
+  let changed = false;
+  if (maxX > canvasWidth)  { canvasWidth  = maxX + margin; changed = true; }
+  if (maxY > canvasHeight) { canvasHeight = maxY + margin; changed = true; }
+  if (changed) applyCanvasSize();
+}
+
+function applyCanvasSize() {
+  const el = document.getElementById('canvas');
+  el.style.width  = canvasWidth  + 'px';
+  el.style.height = canvasHeight + 'px';
+}
+
+// ── Auto-save ──
+let PS_SESSION_KEY = 'pedigree-studio-session';
+let saveTimer = null;
+function scheduleSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try { localStorage.setItem(PS_SESSION_KEY, JSON.stringify(buildSessionData())); } catch(e) {}
+  }, 800);
+}
+
+// ── Undo / Redo ──
+const undoStack = [];
+const redoStack = [];
+const MAX_UNDO = 50;
+let isRestoring = false;
+let undoGroupActive = false;
+
+function pushUndo() {
+  if (isRestoring || undoGroupActive) return;
+  undoStack.push(JSON.stringify(buildSessionData()));
+  if (undoStack.length > MAX_UNDO) undoStack.shift();
+  redoStack.length = 0;
+  updateUndoRedoUI();
+}
+
+function undo() {
+  if (undoStack.length === 0) return;
+  deselectAll();
+  redoStack.push(JSON.stringify(buildSessionData()));
+  const state = JSON.parse(undoStack.pop());
+  // Preserve current slider settings — they are user preferences, not per-operation state
+  const savedGap = partnerGap, savedHeight = childHeight;
+  isRestoring = true;
+  restoreSession(state);
+  isRestoring = false;
+  partnerGap = savedGap; childHeight = savedHeight;
+  document.getElementById('partnerGapSlider').value = partnerGap / SHAPE_SIZE;
+  document.getElementById('partnerGapLabel').textContent = (partnerGap / SHAPE_SIZE) + '×';
+  document.getElementById('childHeightSlider').value = childHeight / SHAPE_SIZE;
+  document.getElementById('childHeightLabel').textContent = (childHeight / SHAPE_SIZE) + '×';
+  scheduleSave();
+  updateUndoRedoUI();
+  document.getElementById('statusBar').textContent = 'Undo';
+}
+
+function redo() {
+  if (redoStack.length === 0) return;
+  deselectAll();
+  undoStack.push(JSON.stringify(buildSessionData()));
+  const state = JSON.parse(redoStack.pop());
+  const savedGap = partnerGap, savedHeight = childHeight;
+  isRestoring = true;
+  restoreSession(state);
+  isRestoring = false;
+  partnerGap = savedGap; childHeight = savedHeight;
+  document.getElementById('partnerGapSlider').value = partnerGap / SHAPE_SIZE;
+  document.getElementById('partnerGapLabel').textContent = (partnerGap / SHAPE_SIZE) + '×';
+  document.getElementById('childHeightSlider').value = childHeight / SHAPE_SIZE;
+  document.getElementById('childHeightLabel').textContent = (childHeight / SHAPE_SIZE) + '×';
+  scheduleSave();
+  updateUndoRedoUI();
+  document.getElementById('statusBar').textContent = 'Redo';
+}
+
+function updateUndoRedoUI() {
+  document.querySelectorAll('.undo-btn').forEach(b => { b.disabled = undoStack.length === 0; b.style.opacity = undoStack.length === 0 ? '0.35' : '1'; });
+  document.querySelectorAll('.redo-btn').forEach(b => { b.disabled = redoStack.length === 0; b.style.opacity = redoStack.length === 0 ? '0.35' : '1'; });
+}
+
+// ── Mobile panel ──
+function openPanel() { document.getElementById('sidePanel').classList.add('open'); document.getElementById('panelOverlay').classList.add('open'); }
+function closePanel() { document.getElementById('sidePanel').classList.remove('open'); document.getElementById('panelOverlay').classList.remove('open'); }
+function dismissSplash() { document.getElementById('splashOverlay').classList.add('hidden'); }
+
+// ── Shape selection ──
+function selectShape(shape) {
+  currentShape = shape;
+  document.querySelectorAll('.shape-option').forEach(el => el.classList.remove('active'));
+  document.querySelector(`.shape-option[data-shape="${shape}"]`)?.classList.add('active');
+  // Auto-show extra shapes panel if an extra shape was selected programmatically
+  if (['no-offspring','infertile','adopted-male','adopted-female','adopted-unknown'].includes(shape)) {
+    const panel = document.getElementById('extraShapes');
+    if (panel.style.display === 'none') toggleExtraShapes();
+  }
+}
+
+function toggleExtraShapes() {
+  const panel = document.getElementById('extraShapes');
+  const btn = document.getElementById('extraShapesToggle');
+  if (panel.style.display === 'none') {
+    panel.style.display = 'flex';
+    btn.textContent = '▲ Hide further symbols';
+  } else {
+    panel.style.display = 'none';
+    btn.textContent = '▼ Show further symbols';
+  }
+}
+
+function toggleConfigSection() {
+  const panel = document.getElementById('configSection');
+  const btn = document.getElementById('configToggle');
+  if (panel.style.display === 'none') {
+    panel.style.display = 'block';
+    btn.textContent = '▲ Configuration';
+  } else {
+    panel.style.display = 'none';
+    btn.textContent = '▼ Configuration';
+  }
+}
+
+// ══════════════════════
+// DRAW TOOL
+// ══════════════════════
+
+function initDrawColorPicker() {
+  const container = document.getElementById('drawColorPicker');
+  DRAW_COLORS.forEach(c => {
+    const btn = document.createElement('div');
+    btn.className = 'draw-color-btn' + (c === drawColor ? ' active' : '');
+    btn.style.background = c;
+    btn.onclick = () => {
+      setDrawColor(c);
+      const hexInput = container.querySelector('.color-hex-input');
+      if (hexInput) { hexInput.value = ''; hexInput.style.borderLeftColor = 'var(--border)'; }
+    };
+    container.appendChild(btn);
+  });
+  // Custom hex input
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'color-hex-input';
+  input.placeholder = '#hex / rgb';
+  input.spellcheck = false;
+  input.autocomplete = 'off';
+  const applyCustom = () => {
+    const color = parseColorInput(input.value);
+    if (color) {
+      input.style.borderLeftColor = color;
+      setDrawColor(color);
+    }
+  };
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); applyCustom(); } });
+  input.addEventListener('blur', applyCustom);
+  input.addEventListener('input', () => {
+    const color = parseColorInput(input.value);
+    input.style.borderLeftColor = color || 'var(--border)';
+  });
+  input.addEventListener('mousedown', (e) => e.stopPropagation());
+  container.appendChild(input);
+}
+
+function setDrawColor(c) {
+  drawColor = c;
+  document.querySelectorAll('.draw-color-btn').forEach(b => {
+    b.classList.toggle('active', rgbToHex(b.style.backgroundColor) === c || b.style.background === c);
+  });
+}
+
+function setDrawWidth(val) {
+  drawLineWidth = parseInt(val);
+  document.getElementById('drawWidthLabel').textContent = drawLineWidth + 'px';
+}
+
+function buildStrokePathD(points) {
+  if (points.length < 2) return '';
+  let d = `M ${points[0].x} ${points[0].y}`;
+  for (let i = 1; i < points.length; i++) {
+    d += ` L ${points[i].x} ${points[i].y}`;
+  }
+  return d;
+}
+
+function createStrokeSVG(stroke) {
+  const svg = document.getElementById('draw-layer');
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', buildStrokePathD(stroke.points));
+  path.setAttribute('stroke', stroke.color);
+  path.setAttribute('stroke-width', stroke.width);
+  path.setAttribute('fill', 'none');
+  path.setAttribute('stroke-linecap', 'round');
+  path.setAttribute('stroke-linejoin', 'round');
+  svg.appendChild(path);
+  return path;
+}
+
+function clearDrawings() {
+  if (drawStrokes.length === 0) return;
+  if (!confirm('Remove all drawings from the canvas?')) return;
+  pushUndo();
+  drawStrokes.length = 0;
+  document.getElementById('draw-layer').innerHTML = '';
+  scheduleSave();
+  document.getElementById('statusBar').textContent = 'Drawings cleared';
+}
+
+function setDrawMode(mode) {
+  drawEraser = (mode === 'eraser');
+  document.getElementById('drawModePen').classList.toggle('active', !drawEraser);
+  document.getElementById('drawModeEraser').classList.toggle('active', drawEraser);
+  document.getElementById('drawPenSettings').style.display = drawEraser ? 'none' : '';
+  document.getElementById('drawEraserSettings').style.display = drawEraser ? '' : 'none';
+  document.getElementById('canvas').classList.toggle('eraser-active', drawEraser);
+  document.getElementById('canvasArea').style.cursor = drawEraser ? 'pointer' : 'crosshair';
+  updateBanner();
+  updateStatus();
+}
+
+function distanceToStroke(px, py, stroke) {
+  let minDist = Infinity;
+  for (let i = 0; i < stroke.points.length - 1; i++) {
+    const ax = stroke.points[i].x, ay = stroke.points[i].y;
+    const bx = stroke.points[i + 1].x, by = stroke.points[i + 1].y;
+    const dx = bx - ax, dy = by - ay;
+    const lenSq = dx * dx + dy * dy;
+    let t = lenSq === 0 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
+    const cx = ax + t * dx, cy = ay + t * dy;
+    const dist = Math.hypot(px - cx, py - cy);
+    if (dist < minDist) minDist = dist;
+  }
+  if (stroke.points.length === 1) {
+    minDist = Math.hypot(px - stroke.points[0].x, py - stroke.points[0].y);
+  }
+  return minDist;
+}
+
+function eraseStrokeAt(clientX, clientY) {
+  const canvas = document.getElementById('canvas');
+  const r = canvas.getBoundingClientRect();
+  const px = (clientX - r.left) / zoomLevel;
+  const py = (clientY - r.top) / zoomLevel;
+  const tolerance = 15 / zoomLevel; // 15 CSS pixels, scaled for zoom
+  let bestIdx = -1, bestDist = Infinity;
+  for (let i = 0; i < drawStrokes.length; i++) {
+    const d = distanceToStroke(px, py, drawStrokes[i]);
+    // Bias toward wider strokes by subtracting half stroke width from distance
+    const effective = d - drawStrokes[i].width / 2;
+    if (effective < bestDist) { bestDist = effective; bestIdx = i; }
+  }
+  if (bestIdx >= 0 && bestDist <= tolerance) {
+    pushUndo();
+    const removed = drawStrokes.splice(bestIdx, 1)[0];
+    if (removed.el && removed.el.parentNode) removed.el.parentNode.removeChild(removed.el);
+    scheduleSave();
+    document.getElementById('statusBar').textContent = 'Drawing erased';
+  }
+}
+
+function rebuildDrawLayer() {
+  const svg = document.getElementById('draw-layer');
+  svg.innerHTML = '';
+  drawStrokes.forEach(s => { s.el = createStrokeSVG(s); });
+}
+
+function isConsanguineousPartnershipType(type) {
+  return type === 'consanguineous' || type === 'consanguineous-separated';
+}
+
+function isSharedPartnerPartnershipType(type) {
+  return type === 'shared-partner' || type === 'shared-partner-separated';
+}
+
+function isSeparatedPartnershipType(type) {
+  return type === 'separated' || type === 'consanguineous-separated' || type === 'shared-partner-separated';
+}
+
+function isProtectedInternalPartnershipType(type) {
+  return isConsanguineousPartnershipType(type) || isSharedPartnerPartnershipType(type);
+}
+
+function requestedTypeWantsSeparated(requestedType) {
+  return isSeparatedPartnershipType(requestedType) || requestedType === 'separated';
+}
+
+function displayPartnershipType(type) {
+  if (type === 'consanguineous-separated') return 'consanguineous separated';
+  if (type === 'consanguineous') return 'consanguineous';
+  if (type === 'shared-partner-separated') return 'shared partner separated';
+  if (type === 'shared-partner') return 'shared partner';
+  if (type === 'separated') return 'separated';
+  return 'normal';
+}
+
+function visiblePartnershipButtonType(type) {
+  // shared-partner is an internal protected-layout type. It deliberately
+  // renders like a normal single partnership line, so the UI highlights Normal
+  // when such a line is selected. shared-partner-separated renders like a
+  // normal separated line, so the UI highlights Separated.
+  if (type === 'shared-partner') return 'normal';
+  if (type === 'shared-partner-separated') return 'separated';
+  return type || 'normal';
+}
+
+function protectedPartnershipStatus(finalType, requestedType) {
+  if (finalType === 'consanguineous-separated') {
+    return 'Related partners kept as a consanguineous separated protected layout line';
+  }
+  if (finalType === 'consanguineous' && requestedType !== 'consanguineous') {
+    return 'Related partners are shown as consanguineous to protect default layout';
+  }
+  if (finalType === 'shared-partner-separated') {
+    return 'Shared-partner link shown as separated but kept as a protected layout line';
+  }
+  if (finalType === 'shared-partner' && requestedType !== 'shared-partner') {
+    return 'Shared-partner link kept as a normal-looking protected layout line';
+  }
+  return 'Partnership changed to ' + displayPartnershipType(finalType);
+}
+
+function setPartnershipType(t) {
+  currentPartnershipType = t;
+  document.querySelectorAll('[data-pt]').forEach(b => b.classList.toggle('active', b.dataset.pt === t));
+  // If a partnership is selected, change its type. Some relationship lines are
+  // protected internal links: true blood relationships are canonicalised to
+  // consanguineous; shared-partner/affinal loops are stored as shared-partner variants
+  // but rendered as normal-looking single or separated lines. In both cases, default layout must not
+  // treat the link as an ordinary adjacent spouse block.
+  if (selectedPartnershipId) {
+    const ps = partnerships.find(p => p.id === selectedPartnershipId);
+    if (ps) {
+      const finalType = canonicalPartnershipType(ps.fromId, ps.toId, t, ps.id);
+      pushUndo();
+      setPartnershipVisualType(ps, finalType);
+      document.querySelectorAll('[data-pt]').forEach(b => b.classList.toggle('active', b.dataset.pt === visiblePartnershipButtonType(finalType)));
+      scheduleSave();
+      document.getElementById('statusBar').textContent = protectedPartnershipStatus(finalType, t);
+    }
+  }
+}
+function setTwinType(t) {
+  currentTwinType = t;
+  document.querySelectorAll('[data-tt]').forEach(b => b.classList.toggle('active', b.dataset.tt === t));
+}
+function setChildLineStyle(style) {
+  document.querySelectorAll('[data-cls]').forEach(b => b.classList.toggle('active', b.dataset.cls === style));
+  if (selectedChildLinkId) {
+    const cl = childLinks.find(c => c.id === selectedChildLinkId);
+    if (cl) {
+      pushUndo();
+      cl.dashed = (style === 'dashed');
+      // Update the visible path's dash attribute
+      if (cl.dashed) {
+        cl.els[0].setAttribute('stroke-dasharray', '6 4');
+      } else {
+        cl.els[0].removeAttribute('stroke-dasharray');
+      }
+      scheduleSave();
+      document.getElementById('statusBar').textContent = 'Child line changed to ' + style;
+    }
+  }
+}
+function setCenterText(ct) {
+  if (!selectedPerson) return; pushUndo(); const p = persons.get(selectedPerson); if (!p) return;
+  p.centerText = ct;
+  document.querySelectorAll('[data-ct]').forEach(b => b.classList.toggle('active', b.dataset.ct === (ct || '')));
+  refreshPersonShape(p); scheduleSave();
+}
+function setMiscarriageSex(s) {
+  if (!selectedPerson) return; pushUndo(); const p = persons.get(selectedPerson); if (!p) return;
+  p.miscarriageSex = s;
+  document.querySelectorAll('[data-ms]').forEach(b => b.classList.toggle('active', b.dataset.ms === s));
+  let msEl = p.el.querySelector('.miscarriage-sex');
+  if (msEl) msEl.textContent = s !== 'unknown' ? s : '';
+  scheduleSave();
+}
+
+// ── Init color pickers ──
+function initColorPickers() {
+  const makePicker = (containerId) => {
+    const c = document.getElementById(containerId);
+    c.innerHTML = '';
+    // Clear/none swatch
+    const cs = document.createElement('div');
+    cs.className = 'fill-swatch clear-swatch';
+    cs.style.border = '2px solid var(--border)';
+    cs.onclick = () => {
+      applyFillColor(null);
+      const hi = c.querySelector('.color-hex-input');
+      if (hi) { hi.value = ''; hi.style.borderLeftColor = 'var(--border)'; }
+    };
+    c.appendChild(cs);
+    FILL_COLORS.forEach(color => {
+      const s = document.createElement('div');
+      s.className = 'fill-swatch';
+      s.style.background = color;
+      s.onclick = () => {
+        applyFillColor(color);
+        const hi = c.querySelector('.color-hex-input');
+        if (hi) { hi.value = ''; hi.style.borderLeftColor = 'var(--border)'; }
+      };
+      c.appendChild(s);
+    });
+    // Custom hex input
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'color-hex-input';
+    input.placeholder = '#hex / rgb';
+    input.spellcheck = false;
+    input.autocomplete = 'off';
+    const applyCustom = () => {
+      const color = parseColorInput(input.value);
+      if (color) {
+        input.style.borderLeftColor = color;
+        applyFillColor(color);
+        // Deactivate palette swatches — custom colour won't match any
+        c.querySelectorAll('.fill-swatch').forEach(s => s.classList.remove('active'));
+      }
+    };
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); applyCustom(); } });
+    input.addEventListener('blur', applyCustom);
+    input.addEventListener('input', () => {
+      const color = parseColorInput(input.value);
+      input.style.borderLeftColor = color || 'var(--border)';
+    });
+    input.addEventListener('mousedown', (e) => e.stopPropagation());
+    c.appendChild(input);
+  };
+  makePicker('solidColorPicker');
+  makePicker('halfColorPicker');
+  makePicker('quarterColorPicker');
+}
+
+// ── Tools ──
+function setTool(tool) {
+  currentTool = tool;
+  connectSource = null;
+  childPartnershipSource = null;
+  twinSource = null;
+  // Clear partnership highlights
+  document.querySelectorAll('.partnership-line.highlighted').forEach(el => el.classList.remove('highlighted'));
+  selectedPartnershipId = null;
+  multiSelectedPartnerships.clear();
+  document.getElementById('partnershipPropsPanel').classList.remove('visible');
+  document.getElementById('multiPartnershipPanel').classList.remove('visible');
+  // Clear child link highlights
+  document.querySelectorAll('.child-link-highlighted').forEach(el => el.classList.remove('child-link-highlighted'));
+  selectedChildLinkId = null;
+  multiSelectedChildLinks.clear();
+  document.getElementById('childLinkPropsPanel').classList.remove('visible');
+  document.getElementById('multiChildLinkPanel').classList.remove('visible');
+  // Remove floating link delete button
+  removeLinkDeleteBtn();
+  // Widen partnership hit areas in child mode for easier selection
+  const hitWidth = tool === 'child' ? '72' : '28';
+  partnerships.forEach(ps => { if (ps.hitEl) ps.hitEl.setAttribute('stroke-width', hitWidth); });
+  document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+  ['tool-','m-tool-'].forEach(prefix => {
+    const btn = document.getElementById(prefix + tool);
+    if (btn) btn.classList.add('active');
+  });
+  // Show/hide draw settings panel
+  document.getElementById('drawPanel').style.display = tool === 'draw' ? '' : 'none';
+  // Set canvas cursor for draw mode
+  document.getElementById('canvasArea').style.cursor = tool === 'draw' ? (drawEraser ? 'pointer' : 'crosshair') : '';
+  // Toggle draw-active class on canvas so persons/labels don't intercept draw events
+  document.getElementById('canvas').classList.toggle('draw-active', tool === 'draw');
+  // Reset eraser state when leaving draw mode
+  if (tool !== 'draw') {
+    drawEraser = false;
+    document.getElementById('canvas').classList.remove('eraser-active');
+    document.getElementById('drawModePen').classList.add('active');
+    document.getElementById('drawModeEraser').classList.remove('active');
+    document.getElementById('drawPenSettings').style.display = '';
+    document.getElementById('drawEraserSettings').style.display = 'none';
+  }
+  updateBanner();
+  updateStatus();
+}
+
+function updateBanner() {
+  const banner = document.getElementById('modeBanner');
+  const msgs = {
+    partner: 'Partner mode — click two people to connect them',
+    child: 'Child mode — click a partnership line, then click a child',
+    twin: 'Twin mode — click two children of the same partnership',
+    label: 'Label mode — click on the canvas to place a text label',
+    draw: drawEraser ? 'Eraser mode — tap a drawing stroke to remove it' : 'Draw mode — sketch freely on the canvas'
+  };
+  if (msgs[currentTool]) { banner.textContent = msgs[currentTool]; banner.classList.add('visible'); }
+  else { banner.classList.remove('visible'); }
+}
+
+function updateStatus() {
+  const s = document.getElementById('statusBar');
+  const map = {
+    move: 'Move — drag to reposition' + (individualMoveMode ? ' (individual)' : ' (group)'),
+    partner: 'Partner — click two people to draw a partnership line',
+    child: 'Child — click a partnership line, then click a person',
+    twin: 'Twin — click two children of same partnership to link',
+    label: 'Label — click on the canvas to add a text label',
+    draw: drawEraser ? 'Eraser — tap a stroke to remove it' : 'Draw — sketch on the canvas'
+  };
+  s.textContent = map[currentTool] || 'Ready';
+}
+
+// ══════════════════════════════════════════════════════════
+// SHARED GEOMETRY MODEL
+// All shape and connection geometry is defined once here.
+// Both the DOM/SVG rendering and the PNG Canvas export
+// consume these same definitions — no parallel maintenance.
+// ══════════════════════════════════════════════════════════
+
+const STROKE_COLOR = '#1a2332';
+const STROKE_W = 2;
+
+// ── Shape outline as SVG path d-string (in 0-52 viewBox coords) ──
+
+function shapePathD(shape) {
+  if (shape === 'male')             return 'M 4 4 L 48 4 L 48 48 L 4 48 Z';
+  if (shape === 'female')           return 'M 48 26 A 22 22 0 0 1 4 26 A 22 22 0 0 1 48 26 Z';
+  if (shape === 'miscarriage')      return 'M 26 8 L 46 44 L 6 44 Z';
+  if (shape === 'no-offspring')     return 'M 8 4 L 44 4';
+  if (shape === 'infertile')        return 'M 8 4 L 44 4 M 8 12 L 44 12';
+  if (shape === 'adopted-male')     return 'M 13 9 L 39 9 L 39 43 L 13 43 Z';
+  if (shape === 'adopted-female')   return 'M 39 26 A 13 13 0 0 1 13 26 A 13 13 0 0 1 39 26 Z';
+  if (shape === 'adopted-unknown')  return 'M 26 7 L 43 26 L 26 45 L 9 26 Z';
+  return 'M 26 3 L 49 26 L 26 49 L 3 26 Z'; // unknown / diamond
+}
+
+const BRACKET_LEFT_D  = 'M 11 3 L 3 3 L 3 49 L 11 49';
+const BRACKET_RIGHT_D = 'M 41 3 L 49 3 L 49 49 L 41 49';
+
+function isAdoptedShape(shape) { return shape === 'adopted-male' || shape === 'adopted-female' || shape === 'adopted-unknown'; }
+function isLineShape(shape)    { return shape === 'no-offspring' || shape === 'infertile'; }
+
+// ── Quartered fill: 4 SVG path d-strings [TR, BR, BL, TL] ──
+
+function quarterPathDs(shape) {
+  if (shape === 'male') return [
+    'M 26 4 L 48 4 L 48 26 L 26 26 Z',
+    'M 26 26 L 48 26 L 48 48 L 26 48 Z',
+    'M 4 26 L 26 26 L 26 48 L 4 48 Z',
+    'M 4 4 L 26 4 L 26 26 L 4 26 Z'
+  ];
+  if (shape === 'female') return [
+    'M 26 26 L 26 4 A 22 22 0 0 1 48 26 Z',
+    'M 26 26 L 48 26 A 22 22 0 0 1 26 48 Z',
+    'M 26 26 L 26 48 A 22 22 0 0 1 4 26 Z',
+    'M 26 26 L 4 26 A 22 22 0 0 1 26 4 Z'
+  ];
+  if (shape === 'miscarriage') return [
+    'M 26 8 L 36 26 L 26 26 Z',
+    'M 26 26 L 36 26 L 46 44 L 26 44 Z',
+    'M 26 26 L 26 44 L 6 44 L 16 26 Z',
+    'M 26 8 L 26 26 L 16 26 Z'
+  ];
+  if (shape === 'adopted-male') return [
+    'M 26 9 L 39 9 L 39 26 L 26 26 Z',
+    'M 26 26 L 39 26 L 39 43 L 26 43 Z',
+    'M 13 26 L 26 26 L 26 43 L 13 43 Z',
+    'M 13 9 L 26 9 L 26 26 L 13 26 Z'
+  ];
+  if (shape === 'adopted-female') return [
+    'M 26 26 L 26 13 A 13 13 0 0 1 39 26 Z',
+    'M 26 26 L 39 26 A 13 13 0 0 1 26 39 Z',
+    'M 26 26 L 26 39 A 13 13 0 0 1 13 26 Z',
+    'M 26 26 L 13 26 A 13 13 0 0 1 26 13 Z'
+  ];
+  if (shape === 'adopted-unknown') return [
+    'M 26 26 L 26 7 L 43 26 Z',
+    'M 26 26 L 43 26 L 26 45 Z',
+    'M 26 26 L 26 45 L 9 26 Z',
+    'M 26 26 L 9 26 L 26 7 Z'
+  ];
+  return [ // diamond
+    'M 26 26 L 26 3 L 49 26 Z',
+    'M 26 26 L 49 26 L 26 49 Z',
+    'M 26 26 L 26 49 L 3 26 Z',
+    'M 26 26 L 3 26 L 26 3 Z'
+  ];
+}
+
+// ── Half fill: 2 SVG path d-strings [Left, Right] ──
+
+function halfPathDs(shape) {
+  if (shape === 'male') return [
+    'M 4 4 L 26 4 L 26 48 L 4 48 Z',
+    'M 26 4 L 48 4 L 48 48 L 26 48 Z'
+  ];
+  if (shape === 'female') return [
+    'M 26 26 L 26 4 A 22 22 0 0 0 26 48 Z',
+    'M 26 26 L 26 4 A 22 22 0 0 1 26 48 Z'
+  ];
+  if (shape === 'miscarriage') return [
+    'M 26 8 L 6 44 L 26 44 Z',
+    'M 26 8 L 46 44 L 26 44 Z'
+  ];
+  if (shape === 'adopted-male') return [
+    'M 13 9 L 26 9 L 26 43 L 13 43 Z',
+    'M 26 9 L 39 9 L 39 43 L 26 43 Z'
+  ];
+  if (shape === 'adopted-female') return [
+    'M 26 26 L 26 13 A 13 13 0 0 0 26 39 Z',
+    'M 26 26 L 26 13 A 13 13 0 0 1 26 39 Z'
+  ];
+  if (shape === 'adopted-unknown') return [
+    'M 26 7 L 9 26 L 26 45 Z',
+    'M 26 7 L 43 26 L 26 45 Z'
+  ];
+  return [ // diamond
+    'M 26 3 L 3 26 L 26 49 Z',
+    'M 26 3 L 49 26 L 26 49 Z'
+  ];
+}
+
+// ── Half divider line {x1,y1,x2,y2} ──
+
+function halfDividerCoords(shape) {
+  if (shape === 'miscarriage') return { x1: 26, y1: 8, x2: 26, y2: 44 };
+  if (shape === 'adopted-male')    return { x1: 26, y1: 9, x2: 26, y2: 43 };
+  if (shape === 'adopted-female')  return { x1: 26, y1: 13, x2: 26, y2: 39 };
+  if (shape === 'adopted-unknown') return { x1: 26, y1: 7, x2: 26, y2: 45 };
+  const e = (shape === 'unknown') ? 3 : 4;
+  const f = (shape === 'unknown') ? 49 : 48;
+  return { x1: 26, y1: e, x2: 26, y2: f };
+}
+
+// ── Quarter divider lines [{x1,y1,x2,y2}, …] ──
+
+function quarterDividerCoords(shape) {
+  if (shape === 'miscarriage') return [
+    { x1: 26, y1: 8, x2: 26, y2: 44 },
+    { x1: 16, y1: 26, x2: 36, y2: 26 }
+  ];
+  if (shape === 'adopted-male') return [
+    { x1: 26, y1: 9, x2: 26, y2: 43 },
+    { x1: 13, y1: 26, x2: 39, y2: 26 }
+  ];
+  if (shape === 'adopted-female') return [
+    { x1: 26, y1: 13, x2: 26, y2: 39 },
+    { x1: 13, y1: 26, x2: 39, y2: 26 }
+  ];
+  if (shape === 'adopted-unknown') return [
+    { x1: 26, y1: 7, x2: 26, y2: 45 },
+    { x1: 9, y1: 26, x2: 43, y2: 26 }
+  ];
+  const e = (shape === 'unknown') ? 3 : 4;
+  const f = (shape === 'unknown') ? 49 : 48;
+  return [
+    { x1: 26, y1: e, x2: 26, y2: f },
+    { x1: e, y1: 26, x2: f, y2: 26 }
+  ];
+}
+
+// ── Deceased line coords {x1,y1,x2,y2} ──
+
+function deceasedLineCoords(shape) {
+  if (shape === 'miscarriage')      return { x1: 6, y1: 44, x2: 46, y2: 8 };
+  if (shape === 'unknown')          return { x1: 3, y1: 49, x2: 49, y2: 3 };
+  if (shape === 'adopted-male')     return { x1: 13, y1: 43, x2: 39, y2: 9 };
+  if (shape === 'adopted-female')   return { x1: 13, y1: 39, x2: 39, y2: 13 };
+  if (shape === 'adopted-unknown')  return { x1: 9, y1: 45, x2: 43, y2: 7 };
+  if (shape === 'no-offspring' || shape === 'infertile') return { x1: 8, y1: 12, x2: 44, y2: 4 };
+  return { x1: 4, y1: 48, x2: 48, y2: 4 }; // male & female
+}
+
+// ── Center text Y position ──
+
+function centerTextY(shape) { return shape === 'miscarriage' ? 30 : 26; }
+
+// ── Partnership line geometry ──
+
+function computePartnershipGeom(fcx, fcy, tcx, tcy, type) {
+  const geom = { x1: fcx, y1: fcy, x2: tcx, y2: tcy, consang: null, slashLines: null };
+  if (isConsanguineousPartnershipType(type)) {
+    const dx = tcx - fcx, dy = tcy - fcy, len = Math.sqrt(dx * dx + dy * dy) || 1;
+    const nx = -dy / len * 4, ny = dx / len * 4;
+    geom.consang = { x1: fcx + nx, y1: fcy + ny, x2: tcx + nx, y2: tcy + ny };
+  }
+  if (isSeparatedPartnershipType(type)) {
+    const mx = (fcx + tcx) / 2, my = (fcy + tcy) / 2, sx = mx - 20;
+    geom.slashLines = [
+      { x1: sx - 5, y1: my - 8, x2: sx + 5, y2: my + 8 },
+      { x1: sx + 3, y1: my - 8, x2: sx + 13, y2: my + 8 }
+    ];
+  }
+  return geom;
+}
+
+// ── Child link path d-string ──
+// siblingTops: array of non-noSnap sibling top positions (excl. this child)
+// twinInfo: null or { otherCenterX, otherTop }
+
+function computeChildLinkD(midX, midY, childCenterX, childTop, childNoSnap, siblingTops, twinInfo, branchYOffset) {
+  branchYOffset = branchYOffset || 0;
+  if (twinInfo) {
+    const forkX = (childCenterX + twinInfo.otherCenterX) / 2;
+    const avgTop = (childTop + twinInfo.otherTop) / 2;
+    const branchY = Math.max(midY + 4, avgTop - SHAPE_HALF) - branchYOffset;
+    return `M ${midX} ${midY} L ${midX} ${branchY} L ${forkX} ${branchY} L ${childCenterX} ${childTop}`;
+  }
+  let dropY;
+  if (childNoSnap && siblingTops.length > 0) {
+    const sibBranchY = Math.max(midY + 4, Math.min(...siblingTops) - SHAPE_HALF);
+    dropY = childTop > sibBranchY ? sibBranchY : Math.max(midY + 4, childTop - SHAPE_HALF);
+  } else {
+    dropY = Math.max(midY + 4, childTop - SHAPE_HALF);
+  }
+  dropY -= branchYOffset;
+  return `M ${midX} ${midY} L ${midX} ${dropY} L ${childCenterX} ${dropY} L ${childCenterX} ${childTop}`;
+}
+
+// ── Twin bar path d-string ──
+
+function computeTwinBarD(type, forkX, branchY, cc1x, cc2x, c1Top, c2Top) {
+  if (type !== 'identical') return '';
+  const f = 0.5;
+  const b1x = forkX + (cc1x - forkX) * f, b1y = branchY + (c1Top - branchY) * f;
+  const b2x = forkX + (cc2x - forkX) * f, b2y = branchY + (c2Top - branchY) * f;
+  return `M ${b1x} ${b1y} L ${b2x} ${b2y}`;
+}
+
+// ── Proband arrow path d-string (in viewBox 0 0 18 18) ──
+
+const PROBAND_ARROW_D = 'M2 16L16 2 M16 2L9 2 M16 2L16 9';
+
+// ══════════════════════════════════════════
+// SHAPE SVG RENDERING (uses shared geometry)
+// ══════════════════════════════════════════
+
+function makeShapeSVG(shape, deceased, fillMode, fillColor, quarters, centerText, halves, shadingPattern, shadingCoverage) {
+  let fills = '', deathLine = '', extra = '';
+  const hasFill = fillMode === 'solid' || fillMode === 'quartered' || fillMode === 'half' || fillMode === 'shading';
+
+  if (fillMode === 'solid' && fillColor)          fills = makeSolidFill(shape, fillColor);
+  else if (fillMode === 'half' && halves)          fills = makeHalfFill(shape, halves);
+  else if (fillMode === 'quartered' && quarters)   fills = makeQuarteredFill(shape, quarters);
+  else if (fillMode === 'shading')                 fills = makeShadingFill(shape, shadingPattern || 'stripes', shadingCoverage || 'full');
+
+  const border = `<path class="shape-border" d="${shapePathD(shape)}" fill="${hasFill ? 'none' : (isLineShape(shape) ? 'none' : '#fff')}" stroke="${STROKE_COLOR}" stroke-width="${STROKE_W}"/>`;
+
+  let brackets = '';
+  if (isAdoptedShape(shape)) {
+    brackets = `<path d="${BRACKET_LEFT_D}" fill="none" stroke="${STROKE_COLOR}" stroke-width="${STROKE_W}"/><path d="${BRACKET_RIGHT_D}" fill="none" stroke="${STROKE_COLOR}" stroke-width="${STROKE_W}"/>`;
+  }
+
+  if (deceased) {
+    const dl = deceasedLineCoords(shape);
+    deathLine = `<line x1="${dl.x1}" y1="${dl.y1}" x2="${dl.x2}" y2="${dl.y2}" stroke="${STROKE_COLOR}" stroke-width="${STROKE_W}"/>`;
+  }
+  if (centerText) {
+    const tc = (fillMode === 'solid' && fillColor && !isLight(fillColor)) ? '#fff' : STROKE_COLOR;
+    const cy = centerTextY(shape);
+    if (centerText === 'dot') {
+      extra = `<circle cx="26" cy="${cy}" r="5" fill="${tc}"/>`;
+    } else {
+      extra = `<text x="26" y="${cy}" text-anchor="middle" dominant-baseline="central" font-size="16" font-weight="700" fill="${tc}" font-family="-apple-system,sans-serif">${centerText}</text>`;
+    }
+  }
+  return `<svg viewBox="0 0 52 52" xmlns="http://www.w3.org/2000/svg">${fills}${border}${brackets}${deathLine}${extra}</svg>`;
+}
+
+function makeSolidFill(shape, color) {
+  return `<path d="${shapePathD(shape)}" fill="${color}" stroke="none"/>`;
+}
+
+function makeHalfFill(shape, halves) {
+  const paths = halfPathDs(shape);
+  const dl = halfDividerCoords(shape);
+  let svg = '';
+  paths.forEach((d, i) => {
+    const c = halves[i] || '#ffffff';
+    svg += `<path d="${d}" fill="${c}" stroke="none"/>`;
+  });
+  svg += `<line x1="${dl.x1}" y1="${dl.y1}" x2="${dl.x2}" y2="${dl.y2}" stroke="${STROKE_COLOR}" stroke-width="1" opacity="0.3"/>`;
+  return svg;
+}
+
+function makeQuarteredFill(shape, quarters) {
+  const paths = quarterPathDs(shape);
+  const dividers = quarterDividerCoords(shape);
+  let svg = '';
+  paths.forEach((d, i) => {
+    const c = quarters[i] || '#ffffff';
+    svg += `<path d="${d}" fill="${c}" stroke="none"/>`;
+  });
+  dividers.forEach(dl => {
+    svg += `<line x1="${dl.x1}" y1="${dl.y1}" x2="${dl.x2}" y2="${dl.y2}" stroke="${STROKE_COLOR}" stroke-width="1" opacity="0.3"/>`;
+  });
+  return svg;
+}
+
+let shadingPatIdCounter = 0;
+
+function makeShadingFill(shape, shadingPattern, shadingCoverage) {
+  const pid = 'shpat-' + (++shadingPatIdCounter);
+  const clipId = pid + '-clip';
+  let patternDef = '';
+  if (shadingPattern === 'dots') {
+    patternDef = `<pattern id="${pid}" patternUnits="userSpaceOnUse" width="8" height="8">` +
+      `<circle cx="4" cy="4" r="1.6" fill="${STROKE_COLOR}"/>` +
+      `</pattern>`;
+  } else {
+    // stripes - diagonal lines
+    patternDef = `<pattern id="${pid}" patternUnits="userSpaceOnUse" width="7" height="7" patternTransform="rotate(45)">` +
+      `<line x1="0" y1="0" x2="0" y2="7" stroke="${STROKE_COLOR}" stroke-width="1.8"/>` +
+      `</pattern>`;
+  }
+
+  let clipPath = '';
+  let fillRegion = '';
+
+  if (shadingCoverage === 'full') {
+    clipPath = `<clipPath id="${clipId}"><path d="${shapePathD(shape)}"/></clipPath>`;
+    fillRegion = `<path d="${shapePathD(shape)}" fill="#fff" stroke="none"/>` +
+      `<rect x="0" y="0" width="52" height="52" fill="url(#${pid})" clip-path="url(#${clipId})"/>`;
+  } else {
+    // half-left or half-right
+    const hDs = halfPathDs(shape);
+    const halfIdx = shadingCoverage === 'half-left' ? 0 : 1;
+    const solidIdx = shadingCoverage === 'half-left' ? 1 : 0;
+    // White fill on the non-shaded half
+    const clipIdSolid = pid + '-clip-s';
+    clipPath = `<clipPath id="${clipId}"><path d="${hDs[halfIdx]}"/></clipPath>` +
+      `<clipPath id="${clipIdSolid}"><path d="${hDs[solidIdx]}"/></clipPath>`;
+    fillRegion = `<rect x="0" y="0" width="52" height="52" fill="#fff" clip-path="url(#${clipIdSolid})"/>` +
+      `<path d="${hDs[halfIdx]}" fill="#fff" stroke="none"/>` +
+      `<rect x="0" y="0" width="52" height="52" fill="url(#${pid})" clip-path="url(#${clipId})"/>`;
+    // Add divider line
+    const dl = halfDividerCoords(shape);
+    fillRegion += `<line x1="${dl.x1}" y1="${dl.y1}" x2="${dl.x2}" y2="${dl.y2}" stroke="${STROKE_COLOR}" stroke-width="1" opacity="0.3"/>`;
+  }
+
+  return `<defs>${patternDef}${clipPath}</defs>${fillRegion}`;
+}
+
+// ══════════════════════════
+// ADD / REMOVE PERSON
+// ══════════════════════════
+
+function addPerson(customId, customX, customY, customShape, customText, customDeceased, customProband, customFillMode, customFillColor, customQuarters, customCenterText, customMiscarriageSex, customHalves, customShadingPattern, customShadingCoverage) {
+  if (!customId) pushUndo();
+  const id = customId || 'person-' + (++personIdCounter);
+  if (!customId) { const n = parseInt(id.split('-')[1]) || 0; if (n > personIdCounter) personIdCounter = n; }
+  else { const n = parseInt(id.split('-')[1]) || 0; if (n >= personIdCounter) personIdCounter = n; }
+
+  const shape = customShape || currentShape;
+  const area = document.getElementById('canvasArea');
+  const areaRect = area.getBoundingClientRect();
+  let x = customX !== undefined ? customX : (areaRect.width / 2 - panX) / zoomLevel - SHAPE_HALF + Math.random() * 60 - 30;
+  let y = customY !== undefined ? customY : (areaRect.height / 2 - panY) / zoomLevel - SHAPE_HALF + Math.random() * 40 - 20;
+  if (customX === undefined && customY === undefined) {
+    const open = findOpenPosition(x, y, new Set());
+    x = open.x; y = open.y;
+  }
+
+  const fillMode = customFillMode || 'none';
+  const fillColor = customFillColor || FILL_COLORS[0];
+  const quarters = customQuarters || [null, null, null, null];
+  const halves = customHalves || [null, null];
+  const centerText = customCenterText || '';
+  const miscarriageSex = customMiscarriageSex || 'unknown';
+  const shadingPattern = customShadingPattern || 'stripes';
+  const shadingCoverage = customShadingCoverage || 'full';
+
+  const el = document.createElement('div');
+  el.className = 'person';
+  el.id = id;
+  el.style.left = x + 'px';
+  el.style.top = y + 'px';
+
+  const shapeDiv = document.createElement('div');
+  shapeDiv.className = 'person-shape';
+  shapeDiv.innerHTML = makeShapeSVG(shape, !!customDeceased, fillMode, fillColor, quarters, centerText, halves, shadingPattern, shadingCoverage);
+  el.appendChild(shapeDiv);
+
+  const numEl = document.createElement('div');
+  numEl.className = 'person-number';
+  el.appendChild(numEl);
+
+  const textEl = document.createElement('div');
+  textEl.className = 'person-text';
+  textEl.textContent = customText || '';
+  el.appendChild(textEl);
+
+  if (shape === 'miscarriage') {
+    const msEl = document.createElement('div');
+    msEl.className = 'miscarriage-sex';
+    msEl.textContent = miscarriageSex !== 'unknown' ? miscarriageSex : '';
+    el.appendChild(msEl);
+  }
+
+  if (customProband) { el.classList.add('proband'); addProbandArrow(el); }
+
+  // Delete
+  const del = document.createElement('button');
+  del.className = 'delete-btn';
+  del.innerHTML = '×';
+  const doDelete = (e) => { e.preventDefault(); e.stopPropagation(); removePerson(id); };
+  del.addEventListener('click', doDelete);
+  del.addEventListener('touchend', doDelete);
+  shapeDiv.appendChild(del);
+
+  // Pointer events
+  const onDown = (e) => {
+    if (e.target.classList.contains('delete-btn')) return;
+    if (currentTool === 'draw') return; // let draw events pass through
+    if (e.cancelable) e.preventDefault();
+    if (currentTool === 'partner') { startPartnerConnect(id); return; }
+    if (currentTool === 'child') {
+      if (childPartnershipSource) {
+        const result = addChildLink(childPartnershipSource, id);
+        childPartnershipSource = null;
+        document.querySelectorAll('.partnership-line.highlighted').forEach(el => el.classList.remove('highlighted'));
+        if (result) {
+          document.getElementById('statusBar').textContent = 'Child connected!';
+        }
+        setTool('move');
+      }
+      return;
+    }
+    if (currentTool === 'twin') { startTwinConnect(id); return; }
+    if (e.shiftKey) { toggleMultiSelect(id); return; }
+    selectPerson(id);
+    startDrag(id, e);
+  };
+  el.addEventListener('mousedown', onDown);
+  el.addEventListener('touchstart', onDown, { passive: false });
+
+  document.getElementById('canvas').appendChild(el);
+
+  const personData = {
+    id, shape, x, y,
+    text: customText || '',
+    deceased: !!customDeceased,
+    proband: !!customProband,
+    fillMode, fillColor,
+    quarters: [...quarters],
+    halves: [...halves],
+    shadingPattern, shadingCoverage,
+    centerText, miscarriageSex,
+    noSnap: false,
+    customLabel: 'Lbl',
+    el
+  };
+  persons.set(id, personData);
+
+  updateNumbering();
+  updateTextWrapping();
+  expandCanvasIfNeeded();
+  scheduleSave();
+  if (!customId) {
+    document.getElementById('statusBar').textContent = `Added ${shape}`;
+    closePanel();
+  }
+  return personData;
+}
+
+function addProbandArrow(el) {
+  const existing = el.querySelector('.proband-arrow');
+  if (existing) existing.remove();
+  const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  arrow.setAttribute('class', 'proband-arrow');
+  arrow.setAttribute('viewBox', '0 0 18 18');
+  arrow.innerHTML = `<path d="${PROBAND_ARROW_D}" stroke="${STROKE_COLOR}" stroke-width="1.8" fill="none"/>`;
+  el.appendChild(arrow);
+}
+
+function removePerson(id) {
+  pushUndo();
+  const p = persons.get(id);
+  if (!p) return;
+  for (let i = partnerships.length - 1; i >= 0; i--) {
+    if (partnerships[i].fromId === id || partnerships[i].toId === id) {
+      const pid = partnerships[i].id;
+      for (let j = childLinks.length - 1; j >= 0; j--) {
+        if (childLinks[j].partnershipId === pid) { childLinks[j].els.forEach(el => el.remove()); childLinks.splice(j, 1); }
+      }
+      for (let j = twinLinks.length - 1; j >= 0; j--) {
+        if (twinLinks[j].partnershipId === pid) { twinLinks[j].els.forEach(el => el.remove()); twinLinks.splice(j, 1); }
+      }
+      partnerships[i].el.remove();
+      partnerships[i].hitEl.remove();
+      if (partnerships[i].el2) partnerships[i].el2.remove();
+      if (partnerships[i].slash) partnerships[i].slash.forEach(s => s.remove());
+      partnerships.splice(i, 1);
+    }
+  }
+  for (let i = childLinks.length - 1; i >= 0; i--) {
+    if (childLinks[i].childId === id) { childLinks[i].els.forEach(el => el.remove()); childLinks.splice(i, 1); }
+  }
+  for (let i = twinLinks.length - 1; i >= 0; i--) {
+    if (twinLinks[i].child1Id === id || twinLinks[i].child2Id === id) { twinLinks[i].els.forEach(el => el.remove()); twinLinks.splice(i, 1); }
+  }
+  multiSelected.delete(id);
+  if (selectedPerson === id) { selectedPerson = null; hideProps(); }
+  // Update multi-select panel count if needed
+  if (multiSelected.size === 1) {
+    const onlyId = [...multiSelected][0]; selectedPerson = onlyId; showProps(persons.get(onlyId)); hideMultiSelectPanel();
+  } else if (multiSelected.size === 0) { hideMultiSelectPanel(); }
+  else { document.getElementById('multiSelectCount').textContent = '(' + multiSelected.size + ')'; }
+  // Clear any link selection that may have been removed with this person
+  if (selectedPartnershipId && !partnerships.find(p => p.id === selectedPartnershipId)) {
+    selectedPartnershipId = null; document.getElementById('partnershipPropsPanel').classList.remove('visible'); removeLinkDeleteBtn();
+  }
+  if (selectedChildLinkId && !childLinks.find(c => c.id === selectedChildLinkId)) {
+    selectedChildLinkId = null; document.getElementById('childLinkPropsPanel').classList.remove('visible'); removeLinkDeleteBtn();
+  }
+  // Clean up multi-selected links that may have been removed
+  [...multiSelectedPartnerships].forEach(pid => { if (!partnerships.find(p => p.id === pid)) multiSelectedPartnerships.delete(pid); });
+  [...multiSelectedChildLinks].forEach(cid => { if (!childLinks.find(c => c.id === cid)) multiSelectedChildLinks.delete(cid); });
+  if (multiSelectedPartnerships.size === 0) document.getElementById('multiPartnershipPanel').classList.remove('visible');
+  if (multiSelectedChildLinks.size === 0) document.getElementById('multiChildLinkPanel').classList.remove('visible');
+  p.el.remove();
+  persons.delete(id);
+  updateNumbering();
+  scheduleSave();
+}
+
+// ══════════════════════
+// SELECTION
+// ══════════════════════
+
+function selectPerson(id) {
+  deselectAll();
+  selectedPerson = id;
+  selectedLabel = null;
+  const p = persons.get(id);
+  if (p) { p.el.classList.add('selected'); showProps(p); }
+}
+
+function deselectAll() {
+  document.querySelectorAll('.person.selected, .person.multi-selected, .label.selected').forEach(el => {
+    el.classList.remove('selected', 'multi-selected');
+  });
+  selectedPerson = null;
+  selectedLabel = null;
+  multiSelected.clear();
+  hideProps();
+  hideMultiSelectPanel();
+
+  // Partnership deselection
+  document.querySelectorAll('.partnership-line.highlighted').forEach(el => el.classList.remove('highlighted'));
+  selectedPartnershipId = null;
+  multiSelectedPartnerships.clear();
+  document.getElementById('partnershipPropsPanel').classList.remove('visible');
+  document.getElementById('multiPartnershipPanel').classList.remove('visible');
+
+  // Child link deselection
+  document.querySelectorAll('.child-link-highlighted').forEach(el => el.classList.remove('child-link-highlighted'));
+  selectedChildLinkId = null;
+  multiSelectedChildLinks.clear();
+  document.getElementById('childLinkPropsPanel').classList.remove('visible');
+  document.getElementById('multiChildLinkPanel').classList.remove('visible');
+
+  // Remove floating link delete button
+  removeLinkDeleteBtn();
+}
+
+function toggleMultiSelect(id) {
+  // Clear any link multi-selections when multi-selecting persons
+  if (multiSelectedPartnerships.size > 0 || multiSelectedChildLinks.size > 0) {
+    document.querySelectorAll('.partnership-line.highlighted').forEach(el => el.classList.remove('highlighted'));
+    document.querySelectorAll('.child-link-highlighted').forEach(el => el.classList.remove('child-link-highlighted'));
+    multiSelectedPartnerships.clear(); multiSelectedChildLinks.clear();
+    selectedPartnershipId = null; selectedChildLinkId = null;
+    document.getElementById('partnershipPropsPanel').classList.remove('visible');
+    document.getElementById('childLinkPropsPanel').classList.remove('visible');
+    document.getElementById('multiPartnershipPanel').classList.remove('visible');
+    document.getElementById('multiChildLinkPanel').classList.remove('visible');
+    removeLinkDeleteBtn();
+  }
+  if (multiSelected.has(id)) { multiSelected.delete(id); persons.get(id)?.el.classList.remove('multi-selected'); }
+  else { multiSelected.add(id); persons.get(id)?.el.classList.add('multi-selected'); }
+  if (multiSelected.size === 1) { const onlyId = [...multiSelected][0]; selectedPerson = onlyId; showProps(persons.get(onlyId)); hideMultiSelectPanel(); }
+  else if (multiSelected.size > 1) { selectedPerson = null; hideProps(); showMultiSelectPanel(); }
+  else { hideProps(); hideMultiSelectPanel(); }
+}
+
+function selectAllPersons() {
+  deselectAll();
+  persons.forEach((p, id) => { multiSelected.add(id); p.el.classList.add('multi-selected'); });
+  if (multiSelected.size > 1) showMultiSelectPanel();
+  else if (multiSelected.size === 1) { const onlyId = [...multiSelected][0]; selectedPerson = onlyId; showProps(persons.get(onlyId)); }
+  document.getElementById('statusBar').textContent = `Selected all ${persons.size} individuals`;
+}
+
+// ══════════════════════
+// PROPERTIES PANEL
+// ══════════════════════
+
+function showProps(p) {
+  const panel = document.getElementById('propsPanel');
+  panel.classList.add('visible');
+  
+  document.getElementById('personText').value = p.text || '';
+  document.getElementById('deceasedToggle').className = 'toggle-switch' + (p.deceased ? ' on' : '');
+  document.getElementById('probandToggle').className = 'toggle-switch' + (p.proband ? ' on' : '');
+  document.getElementById('noSnapToggle').className = 'toggle-switch' + (p.noSnap ? ' on' : '');
+
+  // Center text buttons
+  document.querySelectorAll('[data-ct]').forEach(b => b.classList.toggle('active', b.dataset.ct === (p.centerText || '')));
+  // Miscarriage sex UI
+  document.getElementById('miscarriageSexUI').style.display = p.shape === 'miscarriage' ? 'block' : 'none';
+  document.querySelectorAll('[data-ms]').forEach(b => b.classList.toggle('active', b.dataset.ms === (p.miscarriageSex || 'unknown')));
+
+  // Fill mode buttons
+  document.querySelectorAll('.fill-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === p.fillMode));
+  document.getElementById('solidFillUI').style.display = p.fillMode === 'solid' ? 'block' : 'none';
+  document.getElementById('halfFillUI').style.display = p.fillMode === 'half' ? 'block' : 'none';
+  document.getElementById('quarteredFillUI').style.display = p.fillMode === 'quartered' ? 'block' : 'none';
+  document.getElementById('shadingFillUI').style.display = p.fillMode === 'shading' ? 'block' : 'none';
+
+  // Update quarter grid visuals
+  updateQuarterGridUI(p);
+  // Update half grid visuals
+  updateHalfGridUI(p);
+  // Update shading UI visuals
+  if (p.fillMode === 'shading') updateShadingUI(p);
+
+  // Highlight active solid color
+  document.querySelectorAll('#solidColorPicker .fill-swatch').forEach(s => s.classList.remove('active'));
+  if (p.fillMode === 'solid' && p.fillColor) {
+    document.querySelectorAll('#solidColorPicker .fill-swatch').forEach(s => {
+      if (s.style.background === p.fillColor || rgbToHex(s.style.background) === p.fillColor) s.classList.add('active');
+    });
+  }
+  activeQuarter = -1;
+  activeHalf = -1;
+}
+
+function hideProps() {
+  document.getElementById('propsPanel').classList.remove('visible');
+}
+
+// ══════════════════════
+// LINK PROPERTIES PANELS
+// ══════════════════════
+
+function showPartnershipProps(id) {
+  const ps = partnerships.find(p => p.id === id);
+  if (!ps) return;
+  const visibleType = visiblePartnershipButtonType(ps.type);
+  document.querySelectorAll('#partnershipPropsPanel [data-pt]').forEach(b => b.classList.toggle('active', b.dataset.pt === visibleType));
+  document.getElementById('partnershipPropsPanel').classList.add('visible');
+  let status = 'Partnership selected (' + displayPartnershipType(ps.type) + ')';
+  if (ps.type === 'shared-partner') status = 'Partnership selected (shared partner — normal line, protected layout)';
+  if (ps.type === 'shared-partner-separated') status = 'Partnership selected (shared partner — separated line, protected layout)';
+  if (ps.type === 'consanguineous-separated') status = 'Partnership selected (consanguineous separated, protected layout)';
+  document.getElementById('statusBar').textContent = status;
+}
+
+function showChildLinkProps(id) {
+  const cl = childLinks.find(c => c.id === id);
+  if (!cl) return;
+  const style = cl.dashed ? 'dashed' : 'solid';
+  document.querySelectorAll('#childLinkPropsPanel [data-cls]').forEach(b => b.classList.toggle('active', b.dataset.cls === style));
+  document.getElementById('childLinkPropsPanel').classList.add('visible');
+  document.getElementById('statusBar').textContent = 'Child link selected (' + style + ')';
+}
+
+function showLinkDeleteBtn(id, linkType) {
+  removeLinkDeleteBtn();
+  const btn = document.createElement('button');
+  btn.className = 'link-delete-btn';
+  btn.innerHTML = '×';
+  btn.dataset.linkId = id;
+  btn.dataset.linkType = linkType;
+  const pos = getLinkMidpoint(id, linkType);
+  btn.style.left = pos.x + 'px';
+  btn.style.top = pos.y + 'px';
+  const doDelete = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (linkType === 'partnership') deleteSelectedPartnership();
+    else if (linkType === 'child') deleteSelectedChildLink();
+  };
+  btn.addEventListener('click', doDelete);
+  btn.addEventListener('touchend', doDelete);
+  document.getElementById('canvas').appendChild(btn);
+  linkDeleteBtn = btn;
+}
+
+function removeLinkDeleteBtn() {
+  if (linkDeleteBtn) { linkDeleteBtn.remove(); linkDeleteBtn = null; }
+}
+
+function updateLinkDeleteBtnPos() {
+  if (!linkDeleteBtn) return;
+  const lt = linkDeleteBtn.dataset.linkType;
+  const lid = linkDeleteBtn.dataset.linkId;
+  const pos = getLinkMidpoint(lid, lt);
+  linkDeleteBtn.style.left = pos.x + 'px';
+  linkDeleteBtn.style.top = pos.y + 'px';
+}
+
+function getLinkMidpoint(id, linkType) {
+  if (linkType === 'partnership') {
+    const ps = partnerships.find(p => p.id === id);
+    if (!ps) return { x: 0, y: 0 };
+    const f = persons.get(ps.fromId), t = persons.get(ps.toId);
+    if (!f || !t) return { x: 0, y: 0 };
+    const fc = getPersonCenter(f), tc = getPersonCenter(t);
+    return { x: (fc.x + tc.x) / 2, y: (fc.y + tc.y) / 2 - 16 };
+  }
+  if (linkType === 'child') {
+    const cl = childLinks.find(c => c.id === id);
+    if (!cl) return { x: 0, y: 0 };
+    const ps = partnerships.find(p => p.id === cl.partnershipId);
+    const child = persons.get(cl.childId);
+    if (!ps || !child) return { x: 0, y: 0 };
+    const fp = persons.get(ps.fromId), tp = persons.get(ps.toId);
+    if (!fp || !tp) return { x: 0, y: 0 };
+    const fc = getPersonCenter(fp), tc = getPersonCenter(tp);
+    const midY = (fc.y + tc.y) / 2;
+    const cc = getPersonCenter(child);
+    return { x: cc.x, y: (midY + parseFloat(child.el.style.top)) / 2 };
+  }
+  return { x: 0, y: 0 };
+}
+
+function deleteSelectedPartnership() {
+  if (!selectedPartnershipId) return;
+  if (confirm('Remove this partnership line and all its child connections?')) {
+    removePartnership(selectedPartnershipId);
+    deselectAll();
+  }
+}
+
+function deleteSelectedChildLink() {
+  if (!selectedChildLinkId) return;
+  const cl = childLinks.find(c => c.id === selectedChildLinkId);
+  if (!cl) return;
+  const twinLink = twinLinks.find(t => t.child1Id === cl.childId || t.child2Id === cl.childId);
+  if (twinLink) {
+    if (confirm('This child is part of a twin link. Remove twin relationship?')) {
+      removeTwinLink(twinLink.id);
+    }
+  } else {
+    if (confirm('Remove this child connection?')) {
+      removeChildLink(selectedChildLinkId);
+    }
+  }
+  deselectAll();
+}
+
+function updatePersonText() {
+  if (!selectedPerson) return;
+  const p = persons.get(selectedPerson);
+  if (!p) return;
+  p.text = document.getElementById('personText').value;
+  p.el.querySelector('.person-text').textContent = p.text;
+  updateTextWrapping();
+  scheduleSave();
+}
+
+function toggleDeceased() {
+  if (!selectedPerson) return;
+  pushUndo();
+  const p = persons.get(selectedPerson);
+  if (!p) return;
+  p.deceased = !p.deceased;
+  document.getElementById('deceasedToggle').className = 'toggle-switch' + (p.deceased ? ' on' : '');
+  refreshPersonShape(p);
+  scheduleSave();
+}
+
+function toggleProband() {
+  if (!selectedPerson) return;
+  pushUndo();
+  const p = persons.get(selectedPerson);
+  if (!p) return;
+  persons.forEach(op => {
+    if (op.id !== p.id && op.proband) {
+      op.proband = false; op.el.classList.remove('proband');
+      const arr = op.el.querySelector('.proband-arrow'); if (arr) arr.remove();
+    }
+  });
+  p.proband = !p.proband;
+  document.getElementById('probandToggle').className = 'toggle-switch' + (p.proband ? ' on' : '');
+  if (p.proband) { p.el.classList.add('proband'); addProbandArrow(p.el); }
+  else { p.el.classList.remove('proband'); const arr = p.el.querySelector('.proband-arrow'); if (arr) arr.remove(); }
+  scheduleSave();
+}
+
+function toggleNoSnap() {
+  if (!selectedPerson) return;
+  pushUndo();
+  const p = persons.get(selectedPerson);
+  if (!p) return;
+  p.noSnap = !p.noSnap;
+  document.getElementById('noSnapToggle').className = 'toggle-switch' + (p.noSnap ? ' on' : '');
+  scheduleSave();
+}
+
+function changeShape(newShape) {
+  if (!selectedPerson) return;
+  pushUndo();
+  const p = persons.get(selectedPerson);
+  if (!p) return;
+  p.shape = newShape;
+  if (!p.miscarriageSex) p.miscarriageSex = 'unknown';
+  refreshPersonShape(p);
+  showProps(p);
+  scheduleSave();
+}
+
+function refreshPersonShape(p) {
+  const shapeDiv = p.el.querySelector('.person-shape');
+  const delBtn = shapeDiv.querySelector('.delete-btn');
+  shapeDiv.innerHTML = makeShapeSVG(p.shape, p.deceased, p.fillMode, p.fillColor, p.quarters, p.centerText, p.halves, p.shadingPattern, p.shadingCoverage);
+  if (delBtn) shapeDiv.appendChild(delBtn);
+  if (p.proband) addProbandArrow(p.el);
+  // Manage miscarriage sex label
+  let msEl = p.el.querySelector('.miscarriage-sex');
+  if (p.shape === 'miscarriage') {
+    if (!msEl) { msEl = document.createElement('div'); msEl.className = 'miscarriage-sex'; p.el.appendChild(msEl); }
+    msEl.textContent = (p.miscarriageSex && p.miscarriageSex !== 'unknown') ? p.miscarriageSex : '';
+  } else {
+    if (msEl) msEl.remove();
+  }
+}
+
+// ══════════════════════
+// FILL MODE & COLOURS
+// ══════════════════════
+
+function setFillMode(mode) {
+  if (!selectedPerson) return;
+  pushUndo();
+  const p = persons.get(selectedPerson);
+  if (!p) return;
+  p.fillMode = mode;
+  document.querySelectorAll('.fill-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  document.getElementById('solidFillUI').style.display = mode === 'solid' ? 'block' : 'none';
+  document.getElementById('halfFillUI').style.display = mode === 'half' ? 'block' : 'none';
+  document.getElementById('quarteredFillUI').style.display = mode === 'quartered' ? 'block' : 'none';
+  document.getElementById('shadingFillUI').style.display = mode === 'shading' ? 'block' : 'none';
+  if (mode === 'quartered') updateQuarterGridUI(p);
+  if (mode === 'half') updateHalfGridUI(p);
+  if (mode === 'shading') updateShadingUI(p);
+  refreshPersonShape(p);
+  if (legendVisible) buildLegendBox();
+  scheduleSave();
+}
+
+function applyFillColor(color) {
+  if (!selectedPerson) return;
+  pushUndo();
+  const p = persons.get(selectedPerson);
+  if (!p) return;
+
+  if (p.fillMode === 'solid') {
+    p.fillColor = color;
+    if (!color) p.fillMode = 'none';
+    // Highlight
+    document.querySelectorAll('#solidColorPicker .fill-swatch').forEach(s => s.classList.remove('active'));
+    if (color) {
+      document.querySelectorAll('#solidColorPicker .fill-swatch').forEach(s => {
+        if (rgbToHex(s.style.background) === color || s.style.background === color) s.classList.add('active');
+      });
+    }
+  } else if (p.fillMode === 'half' && activeHalf >= 0) {
+    p.halves[activeHalf] = color;
+    updateHalfGridUI(p);
+  } else if (p.fillMode === 'quartered' && activeQuarter >= 0) {
+    p.quarters[activeQuarter] = color;
+    updateQuarterGridUI(p);
+  }
+  refreshPersonShape(p);
+  if (legendVisible) buildLegendBox();
+  scheduleSave();
+}
+
+function selectQuarter(qi) {
+  activeQuarter = qi;
+  document.querySelectorAll('.quarter-cell').forEach(c => c.classList.remove('active-quarter'));
+  document.querySelector(`.quarter-cell[data-q="${qi}"]`)?.classList.add('active-quarter');
+  const qNames = ['top-right', 'bottom-right', 'bottom-left', 'top-left'];
+  document.getElementById('quarterLabel').textContent = `Selected: ${qNames[qi]}`;
+}
+
+function updateQuarterGridUI(p) {
+  const cells = document.querySelectorAll('.quarter-cell');
+  const qMap = [3, 0, 2, 1]; // grid order: TL=q3, TR=q0, BL=q2, BR=q1
+  cells.forEach(cell => {
+    const qi = parseInt(cell.dataset.q);
+    const c = p.quarters[qi];
+    cell.style.background = c || '#fff';
+    cell.style.color = c ? (isLight(c) ? '#333' : '#fff') : '#aaa';
+  });
+}
+
+function selectHalf(hi) {
+  activeHalf = hi;
+  document.querySelectorAll('.half-cell').forEach(c => c.classList.remove('active-half'));
+  document.querySelector(`.half-cell[data-h="${hi}"]`)?.classList.add('active-half');
+  const hNames = ['left', 'right'];
+  document.getElementById('halfLabel').textContent = `Selected: ${hNames[hi]}`;
+}
+
+function updateHalfGridUI(p) {
+  const cells = document.querySelectorAll('.half-cell');
+  cells.forEach(cell => {
+    const hi = parseInt(cell.dataset.h);
+    const c = p.halves ? p.halves[hi] : null;
+    cell.style.background = c || '#fff';
+    cell.style.color = c ? (isLight(c) ? '#333' : '#fff') : '#aaa';
+  });
+}
+
+function setShadingPattern(pattern) {
+  if (!selectedPerson) return;
+  pushUndo();
+  const p = persons.get(selectedPerson);
+  if (!p) return;
+  p.shadingPattern = pattern;
+  document.querySelectorAll('[data-spattern]').forEach(b => b.classList.toggle('active', b.dataset.spattern === pattern));
+  refreshPersonShape(p);
+  if (legendVisible) buildLegendBox();
+  scheduleSave();
+}
+
+function setShadingCoverage(coverage) {
+  if (!selectedPerson) return;
+  pushUndo();
+  const p = persons.get(selectedPerson);
+  if (!p) return;
+  p.shadingCoverage = coverage;
+  document.querySelectorAll('[data-scoverage]').forEach(b => b.classList.toggle('active', b.dataset.scoverage === coverage));
+  refreshPersonShape(p);
+  if (legendVisible) buildLegendBox();
+  scheduleSave();
+}
+
+function updateShadingUI(p) {
+  const pat = p.shadingPattern || 'stripes';
+  const cov = p.shadingCoverage || 'full';
+  document.querySelectorAll('[data-spattern]').forEach(b => b.classList.toggle('active', b.dataset.spattern === pat));
+  document.querySelectorAll('[data-scoverage]').forEach(b => b.classList.toggle('active', b.dataset.scoverage === cov));
+}
+
+// ══════════════════════
+// MULTI-SELECTION PANELS
+// ══════════════════════
+
+function showMultiSelectPanel() {
+  document.getElementById('multiSelectPanel').classList.add('visible');
+  document.getElementById('multiSelectCount').textContent = '(' + multiSelected.size + ')';
+  // Reset fill mode buttons — no active state initially
+  document.querySelectorAll('[data-mmode]').forEach(b => b.classList.remove('active'));
+  document.getElementById('multiSolidFillUI').style.display = 'none';
+  document.getElementById('multiHalfFillUI').style.display = 'none';
+  document.getElementById('multiQuarteredFillUI').style.display = 'none';
+  document.getElementById('multiShadingFillUI').style.display = 'none';
+  multiActiveQuarter = -1;
+  multiActiveHalf = -1;
+}
+
+function hideMultiSelectPanel() {
+  document.getElementById('multiSelectPanel').classList.remove('visible');
+}
+
+function multiSetFillMode(mode) {
+  if (multiSelected.size === 0) return;
+  pushUndo();
+  multiSelected.forEach(id => {
+    const p = persons.get(id);
+    if (!p) return;
+    p.fillMode = mode;
+    refreshPersonShape(p);
+  });
+  document.querySelectorAll('[data-mmode]').forEach(b => b.classList.toggle('active', b.dataset.mmode === mode));
+  document.getElementById('multiSolidFillUI').style.display = mode === 'solid' ? 'block' : 'none';
+  document.getElementById('multiHalfFillUI').style.display = mode === 'half' ? 'block' : 'none';
+  document.getElementById('multiQuarteredFillUI').style.display = mode === 'quartered' ? 'block' : 'none';
+  document.getElementById('multiShadingFillUI').style.display = mode === 'shading' ? 'block' : 'none';
+  // Reset multi half/quarter grids
+  document.querySelectorAll('#multiHalfGrid .half-cell').forEach(c => { c.style.background = '#fff'; c.classList.remove('active-half'); });
+  document.querySelectorAll('#multiQuarterGrid .quarter-cell').forEach(c => { c.style.background = '#fff'; c.classList.remove('active-quarter'); });
+  if (mode === 'shading') {
+    document.querySelectorAll('[data-mspattern]').forEach(b => b.classList.toggle('active', b.dataset.mspattern === 'stripes'));
+    document.querySelectorAll('[data-mscoverage]').forEach(b => b.classList.toggle('active', b.dataset.mscoverage === 'full'));
+  }
+  multiActiveQuarter = -1;
+  multiActiveHalf = -1;
+  if (legendVisible) buildLegendBox();
+  scheduleSave();
+}
+
+function multiApplyFillColor(color) {
+  if (multiSelected.size === 0) return;
+  pushUndo();
+  multiSelected.forEach(id => {
+    const p = persons.get(id);
+    if (!p) return;
+    if (p.fillMode === 'solid') {
+      p.fillColor = color;
+      if (!color) p.fillMode = 'none';
+    } else if (p.fillMode === 'half' && multiActiveHalf >= 0) {
+      p.halves[multiActiveHalf] = color;
+    } else if (p.fillMode === 'quartered' && multiActiveQuarter >= 0) {
+      p.quarters[multiActiveQuarter] = color;
+    }
+    refreshPersonShape(p);
+  });
+  // Update solid swatch highlights in multi panel
+  document.querySelectorAll('#multiSolidColorPicker .fill-swatch').forEach(s => s.classList.remove('active'));
+  if (color) {
+    document.querySelectorAll('#multiSolidColorPicker .fill-swatch').forEach(s => {
+      if (rgbToHex(s.style.background) === color || s.style.background === color) s.classList.add('active');
+    });
+  }
+  if (legendVisible) buildLegendBox();
+  scheduleSave();
+}
+
+function multiSelectQuarter(qi) {
+  multiActiveQuarter = qi;
+  document.querySelectorAll('#multiQuarterGrid .quarter-cell').forEach(c => c.classList.remove('active-quarter'));
+  document.querySelector(`#multiQuarterGrid .quarter-cell[data-mq="${qi}"]`)?.classList.add('active-quarter');
+  const qNames = ['top-right', 'bottom-right', 'bottom-left', 'top-left'];
+  document.getElementById('multiQuarterLabel').textContent = `Selected: ${qNames[qi]}`;
+}
+
+function multiSelectHalf(hi) {
+  multiActiveHalf = hi;
+  document.querySelectorAll('#multiHalfGrid .half-cell').forEach(c => c.classList.remove('active-half'));
+  document.querySelector(`#multiHalfGrid .half-cell[data-mh="${hi}"]`)?.classList.add('active-half');
+  const hNames = ['left', 'right'];
+  document.getElementById('multiHalfLabel').textContent = `Selected: ${hNames[hi]}`;
+}
+
+function multiSetShadingPattern(pattern) {
+  if (multiSelected.size === 0) return;
+  pushUndo();
+  multiSelected.forEach(id => {
+    const p = persons.get(id);
+    if (!p) return;
+    p.shadingPattern = pattern;
+    refreshPersonShape(p);
+  });
+  document.querySelectorAll('[data-mspattern]').forEach(b => b.classList.toggle('active', b.dataset.mspattern === pattern));
+  if (legendVisible) buildLegendBox();
+  scheduleSave();
+}
+
+function multiSetShadingCoverage(coverage) {
+  if (multiSelected.size === 0) return;
+  pushUndo();
+  multiSelected.forEach(id => {
+    const p = persons.get(id);
+    if (!p) return;
+    p.shadingCoverage = coverage;
+    refreshPersonShape(p);
+  });
+  document.querySelectorAll('[data-mscoverage]').forEach(b => b.classList.toggle('active', b.dataset.mscoverage === coverage));
+  if (legendVisible) buildLegendBox();
+  scheduleSave();
+}
+
+function deleteMultiSelected() {
+  if (multiSelected.size === 0) return;
+  if (!confirm(`Remove ${multiSelected.size} selected individuals and their connections?`)) return;
+  pushUndo(); undoGroupActive = true;
+  [...multiSelected].forEach(id => removePerson(id));
+  undoGroupActive = false;
+  multiSelected.clear();
+  hideMultiSelectPanel();
+  document.getElementById('statusBar').textContent = 'Selected individuals removed';
+}
+
+function initMultiColorPickers() {
+  const makeMultiPicker = (containerId) => {
+    const c = document.getElementById(containerId);
+    c.innerHTML = '';
+    const cs = document.createElement('div');
+    cs.className = 'fill-swatch clear-swatch';
+    cs.style.border = '2px solid var(--border)';
+    cs.onclick = () => {
+      multiApplyFillColor(null);
+      const hi = c.querySelector('.color-hex-input');
+      if (hi) { hi.value = ''; hi.style.borderLeftColor = 'var(--border)'; }
+    };
+    c.appendChild(cs);
+    FILL_COLORS.forEach(color => {
+      const s = document.createElement('div');
+      s.className = 'fill-swatch';
+      s.style.background = color;
+      s.onclick = () => {
+        multiApplyFillColor(color);
+        const hi = c.querySelector('.color-hex-input');
+        if (hi) { hi.value = ''; hi.style.borderLeftColor = 'var(--border)'; }
+      };
+      c.appendChild(s);
+    });
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'color-hex-input';
+    input.placeholder = '#hex / rgb';
+    input.spellcheck = false;
+    input.autocomplete = 'off';
+    const applyCustom = () => {
+      const color = parseColorInput(input.value);
+      if (color) {
+        input.style.borderLeftColor = color;
+        multiApplyFillColor(color);
+        c.querySelectorAll('.fill-swatch').forEach(s => s.classList.remove('active'));
+      }
+    };
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); applyCustom(); } });
+    input.addEventListener('blur', applyCustom);
+    input.addEventListener('input', () => {
+      const color = parseColorInput(input.value);
+      input.style.borderLeftColor = color || 'var(--border)';
+    });
+    input.addEventListener('mousedown', (e) => e.stopPropagation());
+    c.appendChild(input);
+  };
+  makeMultiPicker('multiSolidColorPicker');
+  makeMultiPicker('multiHalfColorPicker');
+  makeMultiPicker('multiQuarterColorPicker');
+}
+
+// ── Multi-Partnership Selection ──
+
+function toggleMultiSelectPartnership(id, lineEl) {
+  if (multiSelectedPartnerships.has(id)) {
+    multiSelectedPartnerships.delete(id);
+    const ps = partnerships.find(p => p.id === id);
+    if (ps && ps.el) ps.el.classList.remove('highlighted');
+  } else {
+    multiSelectedPartnerships.add(id);
+    const ps = partnerships.find(p => p.id === id);
+    if (ps && ps.el) ps.el.classList.add('highlighted');
+  }
+  if (multiSelectedPartnerships.size === 1) {
+    const onlyId = [...multiSelectedPartnerships][0];
+    multiSelectedPartnerships.clear();
+    selectedPartnershipId = onlyId;
+    showPartnershipProps(onlyId);
+    showLinkDeleteBtn(onlyId, 'partnership');
+    document.getElementById('multiPartnershipPanel').classList.remove('visible');
+  } else if (multiSelectedPartnerships.size > 1) {
+    selectedPartnershipId = null;
+    document.getElementById('partnershipPropsPanel').classList.remove('visible');
+    removeLinkDeleteBtn();
+    showMultiPartnershipPanel();
+  } else {
+    document.getElementById('multiPartnershipPanel').classList.remove('visible');
+  }
+}
+
+function showMultiPartnershipPanel() {
+  document.getElementById('multiPartnershipPanel').classList.add('visible');
+  document.getElementById('multiPartnershipCount').textContent = '(' + multiSelectedPartnerships.size + ')';
+  document.querySelectorAll('[data-mpt]').forEach(b => b.classList.remove('active'));
+}
+
+function multiSetPartnershipType(type) {
+  if (multiSelectedPartnerships.size === 0) return;
+  pushUndo();
+  let coerced = false;
+  multiSelectedPartnerships.forEach(id => {
+    const ps = partnerships.find(p => p.id === id);
+    if (!ps) return;
+    const finalType = canonicalPartnershipType(ps.fromId, ps.toId, type, ps.id);
+    if (finalType !== type) coerced = true;
+    setPartnershipVisualType(ps, finalType);
+  });
+  currentPartnershipType = type;
+  document.querySelectorAll('[data-mpt]').forEach(b => b.classList.toggle('active', b.dataset.mpt === type));
+  scheduleSave();
+  if (coerced) document.getElementById('statusBar').textContent = 'Some related/shared-partner links were kept as protected layout lines; separated requests were mapped to protected separated variants where needed';
+}
+
+function deleteMultiSelectedPartnerships() {
+  if (multiSelectedPartnerships.size === 0) return;
+  if (!confirm(`Remove ${multiSelectedPartnerships.size} selected partnerships and their child connections?`)) return;
+  pushUndo(); undoGroupActive = true;
+  [...multiSelectedPartnerships].forEach(id => removePartnership(id));
+  undoGroupActive = false;
+  multiSelectedPartnerships.clear();
+  document.getElementById('multiPartnershipPanel').classList.remove('visible');
+  document.getElementById('statusBar').textContent = 'Selected partnerships removed';
+}
+
+// ── Multi-Child-Link Selection ──
+
+function toggleMultiSelectChildLink(id) {
+  if (multiSelectedChildLinks.has(id)) {
+    multiSelectedChildLinks.delete(id);
+    const cl = childLinks.find(c => c.id === id);
+    if (cl && cl.els && cl.els[0]) cl.els[0].classList.remove('child-link-highlighted');
+  } else {
+    multiSelectedChildLinks.add(id);
+    const cl = childLinks.find(c => c.id === id);
+    if (cl && cl.els && cl.els[0]) cl.els[0].classList.add('child-link-highlighted');
+  }
+  if (multiSelectedChildLinks.size === 1) {
+    const onlyId = [...multiSelectedChildLinks][0];
+    multiSelectedChildLinks.clear();
+    selectedChildLinkId = onlyId;
+    const cl = childLinks.find(c => c.id === onlyId);
+    if (cl && cl.els && cl.els[0]) cl.els[0].classList.add('child-link-highlighted');
+    showChildLinkProps(onlyId);
+    showLinkDeleteBtn(onlyId, 'child');
+    document.getElementById('multiChildLinkPanel').classList.remove('visible');
+  } else if (multiSelectedChildLinks.size > 1) {
+    selectedChildLinkId = null;
+    document.getElementById('childLinkPropsPanel').classList.remove('visible');
+    removeLinkDeleteBtn();
+    showMultiChildLinkPanel();
+  } else {
+    document.getElementById('multiChildLinkPanel').classList.remove('visible');
+  }
+}
+
+function showMultiChildLinkPanel() {
+  document.getElementById('multiChildLinkPanel').classList.add('visible');
+  document.getElementById('multiChildLinkCount').textContent = '(' + multiSelectedChildLinks.size + ')';
+  document.querySelectorAll('[data-mcls]').forEach(b => b.classList.remove('active'));
+}
+
+function multiSetChildLineStyle(style) {
+  if (multiSelectedChildLinks.size === 0) return;
+  pushUndo();
+  const isDashed = style === 'dashed';
+  multiSelectedChildLinks.forEach(id => {
+    const cl = childLinks.find(c => c.id === id);
+    if (!cl) return;
+    cl.dashed = isDashed;
+    if (cl.els && cl.els[0]) {
+      cl.els[0].setAttribute('stroke-dasharray', isDashed ? '6 4' : 'none');
+    }
+  });
+  document.querySelectorAll('[data-mcls]').forEach(b => b.classList.toggle('active', b.dataset.mcls === style));
+  scheduleSave();
+}
+
+function deleteMultiSelectedChildLinks() {
+  if (multiSelectedChildLinks.size === 0) return;
+  if (!confirm(`Remove ${multiSelectedChildLinks.size} selected child connections?`)) return;
+  pushUndo(); undoGroupActive = true;
+  [...multiSelectedChildLinks].forEach(id => removeChildLink(id));
+  undoGroupActive = false;
+  multiSelectedChildLinks.clear();
+  document.getElementById('multiChildLinkPanel').classList.remove('visible');
+  document.getElementById('statusBar').textContent = 'Selected child links removed';
+}
+
+function rgbToHex(rgb) {
+  if (!rgb || rgb.startsWith('#')) return rgb;
+  const m = rgb.match(/\d+/g);
+  if (!m || m.length < 3) return rgb;
+  return '#' + m.slice(0,3).map(x => parseInt(x).toString(16).padStart(2,'0')).join('');
+}
+
+function isLight(hex) {
+  if (!hex) return true;
+  const c = hex.replace('#','');
+  const r = parseInt(c.substr(0,2),16), g = parseInt(c.substr(2,2),16), b = parseInt(c.substr(4,2),16);
+  return (r * 0.299 + g * 0.587 + b * 0.114) > 150;
+}
+
+function parseColorInput(val) {
+  if (!val) return null;
+  val = val.trim();
+  // Handle rgb(r, g, b) format
+  const rgbMatch = val.match(/^rgb\s*\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)$/i);
+  if (rgbMatch) {
+    const [, r, g, b] = rgbMatch;
+    if (+r <= 255 && +g <= 255 && +b <= 255) {
+      return '#' + [r, g, b].map(x => parseInt(x).toString(16).padStart(2, '0')).join('');
+    }
+    return null;
+  }
+  // Strip leading # if present
+  let hex = val.replace(/^#/, '');
+  // Expand shorthand (e.g. f00 → ff0000)
+  if (/^[0-9a-fA-F]{3}$/.test(hex)) {
+    hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+  }
+  // Validate 6-digit hex
+  if (/^[0-9a-fA-F]{6}$/.test(hex)) {
+    return '#' + hex.toLowerCase();
+  }
+  return null;
+}
+
+// ══════════════════════
+// FREE TEXT LABELS
+// ══════════════════════
+
+function createLabel(x, y, customId, customText, customSize, customBordered) {
+  if (!customId) pushUndo();
+  const id = customId || 'label-' + (++labelIdCounter);
+  if (!customId) { const n = parseInt(id.split('-')[1]) || 0; if (n > labelIdCounter) labelIdCounter = n; }
+  else { const n = parseInt(id.split('-')[1]) || 0; if (n >= labelIdCounter) labelIdCounter = n; }
+
+  const size = customSize || currentLabelSize;
+  const bordered = customBordered !== undefined ? customBordered : false;
+  const label = document.createElement('div');
+  label.className = 'label' + (bordered ? ' bordered' : '');
+  label.id = id;
+  label.style.left = x + 'px';
+  label.style.top = y + 'px';
+  label.style.fontSize = size + 'px';
+
+  const textEl = document.createElement('div');
+  textEl.className = 'label-text';
+  textEl.contentEditable = 'false';
+  textEl.innerText = customText || 'Label';
+
+  textEl.addEventListener('dblclick', (e) => { e.stopPropagation(); enterEditMode(textEl); });
+  let lastTap = 0;
+  textEl.addEventListener('touchend', (e) => {
+    const now = Date.now();
+    if (now - lastTap < 350) { e.preventDefault(); e.stopPropagation(); enterEditMode(textEl); lastTap = 0; }
+    else { lastTap = now; }
+  });
+  textEl.addEventListener('mousedown', (e) => { if (textEl.contentEditable === 'true') e.stopPropagation(); });
+  textEl.addEventListener('touchstart', (e) => { if (textEl.contentEditable === 'true') e.stopPropagation(); }, { passive: true });
+  textEl.addEventListener('blur', () => { textEl.contentEditable = 'false'; scheduleSave(); });
+
+  const del = document.createElement('button');
+  del.className = 'delete-btn';
+  del.innerHTML = '×';
+  const doDelete = (e) => { e.preventDefault(); e.stopPropagation(); removeLabel(id); };
+  del.addEventListener('click', doDelete);
+  del.addEventListener('touchend', doDelete);
+
+  label.appendChild(textEl);
+  label.appendChild(del);
+
+  const onDown = (e) => {
+    if (e.target.contentEditable === 'true') return;
+    if (e.target.classList.contains('delete-btn')) return;
+    if (e.cancelable) e.preventDefault();
+    exitAllEditModes();
+    deselectAll();
+    label.classList.add('selected');
+    selectedLabel = id;
+    
+    document.getElementById('labelSizeDisplay').textContent = parseInt(label.style.fontSize) + 'px';
+    const lData = labels.get(id);
+    document.getElementById('labelBorderToggle').innerHTML =
+      '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg> Border Box: ' +
+      (lData && lData.bordered ? 'On' : 'Off');
+    startLabelDrag(label, e);
+  };
+  label.addEventListener('mousedown', onDown);
+  label.addEventListener('touchstart', onDown, { passive: false });
+
+  document.getElementById('canvas').appendChild(label);
+  labels.set(id, { id, el: label, text: customText || 'Label', size, bordered });
+
+  if (!customId) setTimeout(() => enterEditMode(textEl), 50);
+  expandCanvasIfNeeded();
+  scheduleSave();
+  return label;
+}
+
+function removeLabel(id) {
+  pushUndo();
+  const l = labels.get(id);
+  if (!l) return;
+  l.el.remove();
+  labels.delete(id);
+  if (selectedLabel === id) { selectedLabel = null; }
+  scheduleSave();
+}
+
+function activateLabelTool() {
+  setTool('label');
+  closePanel();
+}
+
+function enterEditMode(textEl) {
+  pushUndo();
+  exitAllEditModes();
+  textEl.contentEditable = 'true';
+  textEl.style.touchAction = 'auto';
+  textEl.focus();
+  const range = document.createRange();
+  range.selectNodeContents(textEl);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+function exitAllEditModes() {
+  document.querySelectorAll('.label-text').forEach(el => {
+    if (el.contentEditable === 'true') {
+      el.contentEditable = 'false';
+      el.style.touchAction = '';
+      // Update label data
+      const labelEl = el.closest('.label');
+      if (labelEl) {
+        const ld = labels.get(labelEl.id);
+        if (ld) ld.text = el.textContent;
+      }
+    }
+  });
+}
+
+function changeLabelSize(delta) {
+  currentLabelSize = Math.max(8, Math.min(48, currentLabelSize + delta));
+  document.getElementById('labelSizeDisplay').textContent = currentLabelSize + 'px';
+  if (selectedLabel) {
+    pushUndo();
+    const l = labels.get(selectedLabel);
+    if (l) { l.el.style.fontSize = currentLabelSize + 'px'; l.size = currentLabelSize; scheduleSave(); }
+  }
+}
+
+function toggleLabelBorder() {
+  if (selectedLabel) {
+    pushUndo();
+    const l = labels.get(selectedLabel);
+    if (l) {
+      l.bordered = !l.bordered;
+      l.el.classList.toggle('bordered', l.bordered);
+      document.getElementById('labelBorderToggle').innerHTML =
+        '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg> Border Box: ' +
+        (l.bordered ? 'On' : 'Off');
+      scheduleSave();
+    }
+  } else {
+    document.getElementById('statusBar').textContent = 'Select a label first to toggle its border';
+  }
+}
+
+let labelDragState = null;
+function startLabelDrag(el, e) {
+  pushUndo();
+  const pos = getPointerPos(e);
+  labelDragState = { el, startX: pos.clientX, startY: pos.clientY, origLeft: parseFloat(el.style.left), origTop: parseFloat(el.style.top) };
+  el.classList.add('dragging');
+}
+
+// ══════════════════════
+// INDIVIDUAL MOVE TOGGLE
+// ══════════════════════
+
+function toggleIndividualMove() {
+  individualMoveMode = !individualMoveMode;
+  document.getElementById('individualMoveToggle').className = 'toggle-switch' + (individualMoveMode ? ' on' : '');
+  updateStatus();
+}
+
+function setPartnerGap(val) {
+  partnerGap = SHAPE_SIZE * parseFloat(val);
+  document.getElementById('partnerGapLabel').textContent = val + '×';
+  scheduleSave();
+}
+
+function setChildHeight(val) {
+  childHeight = SHAPE_SIZE * parseFloat(val);
+  document.getElementById('childHeightLabel').textContent = val + '×';
+  scheduleSave();
+}
+
+function setNumberingMode(mode) {
+  numberingMode = mode;
+  document.querySelectorAll('[data-nm]').forEach(b => b.classList.toggle('active', b.dataset.nm === mode));
+  updateNumbering();
+  scheduleSave();
+}
+
+// ══════════════════════
+// PARTNERSHIP CONNECTIONS
+// ══════════════════════
+
+function startPartnerConnect(id) {
+  if (!connectSource) {
+    connectSource = id;
+    persons.get(id)?.el.classList.add('selected');
+    document.getElementById('statusBar').textContent = 'Now click the partner';
+  } else if (connectSource !== id) {
+    const exists = partnerships.some(p => (p.fromId === connectSource && p.toId === id) || (p.fromId === id && p.toId === connectSource));
+    if (!exists) {
+      const result = addPartnership(connectSource, id);
+      if (result) { document.getElementById('statusBar').textContent = 'Partnership connected!'; }
+      else { document.getElementById('statusBar').textContent = 'Partnership cancelled'; }
+    }
+    else { document.getElementById('statusBar').textContent = 'Partnership already exists'; }
+    document.querySelectorAll('.person.selected').forEach(el => el.classList.remove('selected'));
+    connectSource = null;
+    setTool('move');
+  }
+}
+
+
+// ═══════════════════════════════════════
+// DEFAULT SNAP MODE — QUICK-BUILD LAYOUT
+// ═══════════════════════════════════════
+// Default mode is construction-focused. It should help users build quickly
+// without symbol overlap, but it must not behave like a hidden redistribute.
+// Therefore: creation may make room by pushing neighbouring family blocks
+// horizontally; dragging never pushes unrelated pedigrees; and partner+child
+// subtrees are treated as locked blocks when inserting additional siblings; partner-bearing child blocks reserve their full width in the sibling row.
+const DEFAULT_SNAP_GAP = 12;
+const DEFAULT_ROW_TOL = SHAPE_HALF;
+
+function getPersonX(id) {
+  const p = persons.get(id);
+  return p ? parseFloat(p.el.style.left) : 0;
+}
+
+function getPersonY(id) {
+  const p = persons.get(id);
+  return p ? parseFloat(p.el.style.top) : 0;
+}
+
+function setPersonPos(id, x, y) {
+  const p = persons.get(id);
+  if (!p) return;
+  p.el.style.left = x + 'px';
+  p.el.style.top = y + 'px';
+  p.x = x;
+  p.y = y;
+}
+
+function moveDefaultIds(ids, dx, dy) {
+  if (!ids || (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5)) return;
+  ids.forEach(id => {
+    const p = persons.get(id);
+    if (!p || p.noSnap) return;
+    setPersonPos(id, getPersonX(id) + dx, getPersonY(id) + dy);
+  });
+}
+
+function personRectAt(x, y) {
+  return { left: x, top: y, right: x + SHAPE_SIZE, bottom: y + SHAPE_SIZE };
+}
+
+function rectsOverlap(a, b, gap) {
+  gap = gap === undefined ? DEFAULT_SNAP_GAP : gap;
+  return a.left < b.right + gap && a.right + gap > b.left &&
+         a.top < b.bottom + gap && a.bottom + gap > b.top;
+}
+
+function findPersonOverlapAt(x, y, ignoreIds) {
+  const probe = personRectAt(x, y);
+  let best = null;
+  persons.forEach((p, id) => {
+    if (ignoreIds && ignoreIds.has(id)) return;
+    const r = personRectAt(getPersonX(id), getPersonY(id));
+    if (!rectsOverlap(probe, r, DEFAULT_SNAP_GAP)) return;
+    const overlapX = Math.min(probe.right, r.right) - Math.max(probe.left, r.left);
+    const overlapY = Math.min(probe.bottom, r.bottom) - Math.max(probe.top, r.top);
+    const area = Math.max(0, overlapX) * Math.max(0, overlapY);
+    if (!best || area > best.area) best = { id, person: p, rect: r, area };
+  });
+  return best;
+}
+
+function findAnyPersonOverlap() {
+  const arr = [];
+  persons.forEach((p, id) => arr.push({ id, person: p, rect: personRectAt(getPersonX(id), getPersonY(id)) }));
+  for (let i = 0; i < arr.length; i++) {
+    for (let j = i + 1; j < arr.length; j++) {
+      if (rectsOverlap(arr[i].rect, arr[j].rect, DEFAULT_SNAP_GAP)) return [arr[i], arr[j]];
+    }
+  }
+  return null;
+}
+
+function findOpenPosition(x, y, ignoreIds) {
+  const step = SHAPE_SIZE + DEFAULT_SNAP_GAP;
+  const probes = [{ dx: 0, dy: 0 }];
+  for (let ring = 1; ring <= 24; ring++) {
+    probes.push(
+      { dx: ring * step, dy: 0 },
+      { dx: -ring * step, dy: 0 },
+      { dx: 0, dy: ring * step },
+      { dx: 0, dy: -ring * step }
+    );
+    for (let k = 1; k <= ring; k++) {
+      probes.push(
+        { dx: ring * step, dy: k * step },
+        { dx: ring * step, dy: -k * step },
+        { dx: -ring * step, dy: k * step },
+        { dx: -ring * step, dy: -k * step }
+      );
+    }
+  }
+  for (const p of probes) {
+    const nx = x + p.dx;
+    const ny = y + p.dy;
+    if (!findPersonOverlapAt(nx, ny, ignoreIds || new Set())) return { x: nx, y: ny };
+  }
+  return { x, y };
+}
+
+function shiftDefaultRowFromPoint(splitX, splitY, side, amount, excludeIds) {
+  if (amount <= 0) return;
+  excludeIds = excludeIds || new Set();
+  const dx = side === 'right' ? amount : -amount;
+  const seedIds = [];
+
+  persons.forEach((rp, rid) => {
+    if (excludeIds.has(rid) || rp.noSnap) return;
+    const ry = getPersonY(rid);
+    if (Math.abs(ry - splitY) > DEFAULT_ROW_TOL) return;
+    const rx = getPersonX(rid);
+    if (side === 'right' && rx >= splitX) seedIds.push(rid);
+    else if (side === 'left' && rx <= splitX) seedIds.push(rid);
+  });
+  if (seedIds.length === 0) return;
+
+  const toShift = new Set(seedIds);
+  const queue = [...seedIds];
+  while (queue.length) {
+    const id = queue.shift();
+    partnerships.forEach(ps => {
+      if (ps.fromId !== id && ps.toId !== id) return;
+      const partnerId = ps.fromId === id ? ps.toId : ps.fromId;
+      if (!toShift.has(partnerId) && !excludeIds.has(partnerId)) {
+        const partner = persons.get(partnerId);
+        if (partner && !partner.noSnap) {
+          const py = getPersonY(partnerId);
+          const px = getPersonX(partnerId);
+          const belowRow = py > splitY + DEFAULT_ROW_TOL;
+          const sameSide = side === 'right' ? px >= splitX : px <= splitX;
+          if (belowRow || sameSide) { toShift.add(partnerId); queue.push(partnerId); }
+        }
+      }
+      childLinks.forEach(cl => {
+        if (cl.partnershipId !== ps.id || toShift.has(cl.childId) || excludeIds.has(cl.childId)) return;
+        const child = persons.get(cl.childId);
+        if (child && !child.noSnap) { toShift.add(cl.childId); queue.push(cl.childId); }
+      });
+    });
+  }
+
+  moveDefaultIds(toShift, dx, 0);
+}
+
+function clearSlotForDefaultPlacement(x, y, movingIds, preferredSide) {
+  // Slot probing is now non-mutating. Construction-time overlaps are resolved
+  // after the active family is placed, by resolveDefaultConstructionOverlaps(),
+  // which can push neighbouring family blocks as intact units.
+  movingIds = movingIds || new Set();
+  return !findPersonOverlapAt(x, y, movingIds);
+}
+
+
+function resolveDefaultShapeOverlaps() {
+  // Last-resort local collision resolver.  It only separates symbols; it avoids
+  // any pedigree-aware reordering and leaves noSnap/free-positioned people fixed.
+  for (let i = 0; i < 120; i++) {
+    const pair = findAnyPersonOverlap();
+    if (!pair) return true;
+    const [a, b] = pair;
+
+    if (a.person.noSnap && b.person.noSnap) return false;
+
+    let mover = b, fixed = a, side = 'right';
+    if (b.person.noSnap || (!a.person.noSnap && a.rect.left > b.rect.left)) {
+      mover = a;
+      fixed = b;
+    }
+    if (fixed.person.noSnap && mover.rect.left < fixed.rect.left) side = 'left';
+
+    if (side === 'right') {
+      const amount = Math.max(DEFAULT_SNAP_GAP + 1, fixed.rect.right + DEFAULT_SNAP_GAP - mover.rect.left);
+      shiftDefaultRowFromPoint(mover.rect.left - 1, mover.rect.top, 'right', amount, new Set([fixed.id]));
+    } else {
+      const amount = Math.max(DEFAULT_SNAP_GAP + 1, mover.rect.right + DEFAULT_SNAP_GAP - fixed.rect.left);
+      shiftDefaultRowFromPoint(mover.rect.right + 1, mover.rect.top, 'left', amount, new Set([fixed.id]));
+    }
+  }
+  return !findAnyPersonOverlap();
+}
+
+function chooseDefaultPartnerSide(fromId, toId) {
+  const fromP = persons.get(fromId), toP = persons.get(toId);
+  if (!fromP || !toP) return 'right';
+  const fromX = getPersonX(fromId);
+  const toX = getPersonX(toId);
+  // Honour an obviously intentional rough placement by the user.
+  if (toX < fromX - SHAPE_HALF) return 'left';
+  if (toX > fromX + SHAPE_HALF) return 'right';
+  return chooseSideForPartner(fromId);
+}
+
+function getExistingChildIds(partnershipId, excludeChildId) {
+  return childLinks
+    .filter(cl => cl.partnershipId === partnershipId && cl.childId !== excludeChildId)
+    .map(cl => cl.childId)
+    .filter(id => persons.get(id));
+}
+
+function childHasExternalPartner(childId, siblingIds) {
+  const sibSet = new Set(siblingIds);
+  return partnerships.some(ps => {
+    if (ps.fromId !== childId && ps.toId !== childId) return false;
+    const partnerId = ps.fromId === childId ? ps.toId : ps.fromId;
+    return persons.has(partnerId) && !sibSet.has(partnerId);
+  });
+}
+
+function getParentPartnershipForChild(childId) {
+  const parentLink = childLinks.find(cl => cl.childId === childId);
+  return parentLink ? parentLink.partnershipId : null;
+}
+
+function getFamilyChildIds(partnershipId, excludeChildId) {
+  return childLinks
+    .filter(cl => cl.partnershipId === partnershipId && cl.childId !== excludeChildId)
+    .map(cl => cl.childId)
+    .filter(id => persons.has(id));
+}
+
+function getIdsBounds(ids) {
+  let left = Infinity, right = -Infinity, top = Infinity, bottom = -Infinity;
+  ids.forEach(id => {
+    const p = persons.get(id);
+    if (!p) return;
+    const x = getPersonX(id);
+    const y = getPersonY(id);
+    left = Math.min(left, x);
+    right = Math.max(right, x + SHAPE_SIZE);
+    top = Math.min(top, y);
+    bottom = Math.max(bottom, y + SHAPE_SIZE);
+  });
+  if (left === Infinity) return null;
+  return { left, right, top, bottom, width: right - left, height: bottom - top };
+}
+
+function rectsOverlapY(a, b, gap) {
+  gap = gap === undefined ? DEFAULT_SNAP_GAP : gap;
+  return a.top < b.bottom + gap && a.bottom + gap > b.top;
+}
+
+function getDefaultDownstreamBlock(startId) {
+  // Descendant/partner traversal used by default construction.  This is
+  // deliberately one-way with respect to parent links: it follows partnerships
+  // and children born to those partnerships, but it never walks upward from a
+  // child to their parents.  The older getSubtree() helper can walk through a
+  // spouse's family-of-origin, which is too broad for construction-time
+  // spacing and can pull unrelated ancestors into a sibling block.
+  const visited = new Set();
+  const queue = [startId];
+  while (queue.length) {
+    const id = queue.shift();
+    if (visited.has(id) || !persons.has(id)) continue;
+    visited.add(id);
+    partnerships.forEach(ps => {
+      if (ps.fromId !== id && ps.toId !== id) return;
+      // Consanguineous partnerships connect two existing branches of the same
+      // pedigree.  For default construction spacing they must not merge those
+      // branches into one huge sibling block, otherwise cousin sibships can be
+      // pushed thousands of pixels apart.  Children of the consanguineous
+      // partnership are still handled when that partnership itself is the
+      // active family being laid out.
+      if (isProtectedInternalPartnership(ps)) return;
+      const partnerId = ps.fromId === id ? ps.toId : ps.fromId;
+      if (persons.has(partnerId) && !visited.has(partnerId)) queue.push(partnerId);
+      childLinks.forEach(cl => {
+        if (cl.partnershipId === ps.id && persons.has(cl.childId) && !visited.has(cl.childId)) queue.push(cl.childId);
+      });
+    });
+  }
+  return visited;
+}
+
+function getDefaultChildBlock(childId, parentPartnershipId) {
+  // A sibling block is the child plus any partner/descendant branch below that
+  // child.  It does not include the child's parents or in-laws' ancestors.
+  // Parents are added separately when a neighbouring sibship must move as a
+  // family block.
+  const ids = getDefaultDownstreamBlock(childId);
+  if (!ids.has(childId)) ids.add(childId);
+  return ids;
+}
+
+function getSiblingBlocks(partnershipId, excludeChildId) {
+  return getFamilyChildIds(partnershipId, excludeChildId).map(childId => {
+    const ids = getDefaultChildBlock(childId, partnershipId);
+    const bounds = getIdsBounds(ids);
+    return { childId, ids, bounds, childX: getPersonX(childId), childY: getPersonY(childId) };
+  }).filter(b => b.bounds).sort((a, b) => a.childX - b.childX);
+}
+
+function shiftSiblingBlocks(partnershipId, splitX, side, amount, excludeIds) {
+  if (amount <= 0) return;
+  excludeIds = excludeIds || new Set();
+  const moved = new Set();
+  getSiblingBlocks(partnershipId).forEach(block => {
+    if ([...block.ids].some(id => excludeIds.has(id))) return;
+    const onSide = side === 'right' ? block.bounds.left >= splitX : block.bounds.right <= splitX;
+    if (!onSide) return;
+    block.ids.forEach(id => { if (!excludeIds.has(id)) moved.add(id); });
+  });
+  moveDefaultIds(moved, side === 'right' ? amount : -amount, 0);
+}
+
+function openSiblingSlot(partnershipId, targetRect, side, excludeIds) {
+  // Make room inside the active sibship first. Wider cousin-sibship collisions
+  // are handled afterwards by pushing whole neighbouring family blocks.
+  const blocks = getSiblingBlocks(partnershipId).filter(b => ![...b.ids].some(id => excludeIds && excludeIds.has(id)));
+  const conflicts = blocks.filter(b => rectsOverlap(targetRect, b.bounds, DEFAULT_SNAP_GAP));
+  if (conflicts.length === 0) return;
+  if (side === 'left') {
+    const rightEdge = Math.max(...conflicts.map(b => b.bounds.right));
+    const amount = Math.max(0, rightEdge + DEFAULT_SNAP_GAP - targetRect.left);
+    shiftSiblingBlocks(partnershipId, rightEdge + 1, 'left', amount, excludeIds);
+  } else {
+    const leftEdge = Math.min(...conflicts.map(b => b.bounds.left));
+    const amount = Math.max(0, targetRect.right + DEFAULT_SNAP_GAP - leftEdge);
+    shiftSiblingBlocks(partnershipId, leftEdge - 1, 'right', amount, excludeIds);
+  }
+}
+
+
+function openSiblingBlockSlot(partnershipId, targetBounds, anchorX, excludeIds) {
+  // Reserve horizontal space for an entire sibling unit, not just the child's
+  // own symbol. This is essential when the active child already has a partner
+  // or subtree: the partner must not be allowed to overlap neighbouring
+  // siblings, and new siblings must not be inserted through a partner-pair.
+  if (!targetBounds) return;
+  excludeIds = excludeIds || new Set();
+  const blocks = getSiblingBlocks(partnershipId).filter(b => ![...b.ids].some(id => excludeIds.has(id)));
+  const conflicts = blocks.filter(b => rectsOverlap(targetBounds, b.bounds, DEFAULT_SNAP_GAP));
+  if (conflicts.length === 0) return;
+
+  const centre = anchorX !== undefined && Number.isFinite(anchorX)
+    ? anchorX
+    : (targetBounds.left + targetBounds.right) / 2;
+  const leftConflicts = conflicts.filter(b => ((b.bounds.left + b.bounds.right) / 2) < centre);
+  const rightConflicts = conflicts.filter(b => !leftConflicts.includes(b));
+
+  if (leftConflicts.length) {
+    const rightEdge = Math.max(...leftConflicts.map(b => b.bounds.right));
+    const amount = Math.max(0, rightEdge + DEFAULT_SNAP_GAP - targetBounds.left);
+    if (amount > 0) shiftSiblingBlocks(partnershipId, rightEdge + 1, 'left', amount, excludeIds);
+  }
+  if (rightConflicts.length) {
+    const leftEdge = Math.min(...rightConflicts.map(b => b.bounds.left));
+    const amount = Math.max(0, targetBounds.right + DEFAULT_SNAP_GAP - leftEdge);
+    if (amount > 0) shiftSiblingBlocks(partnershipId, leftEdge - 1, 'right', amount, excludeIds);
+  }
+}
+
+function reserveSiblingSpaceForIds(partnershipId, ids, anchorId) {
+  // Recompute bounds after any local snap/move and then make the sibling row
+  // respect that whole block.  Used for partner insertion and for linking a
+  // pre-partnered person as a child.
+  if (!partnershipId || !ids || !ids.size) return;
+  const bounds = getIdsBounds(ids);
+  if (!bounds) return;
+  const anchorX = persons.has(anchorId) ? getPersonX(anchorId) + SHAPE_HALF : (bounds.left + bounds.right) / 2;
+  openSiblingBlockSlot(partnershipId, bounds, anchorX, ids);
+}
+
+function setsIntersect(a, b) {
+  if (!a || !b) return false;
+  for (const id of a) if (b.has(id)) return true;
+  return false;
+}
+
+function cloneIdSet(ids) {
+  return new Set(ids || []);
+}
+
+function getPartnershipChildIds(partnershipId) {
+  return childLinks
+    .filter(cl => cl.partnershipId === partnershipId)
+    .map(cl => cl.childId)
+    .filter(id => persons.has(id));
+}
+
+function getChildBearingPartnershipIds(personId) {
+  return partnerships
+    .filter(ps => (ps.fromId === personId || ps.toId === personId) && childLinks.some(cl => cl.partnershipId === ps.id))
+    .map(ps => ps.id);
+}
+
+function getDefaultNuclearFamilyBlock(partnershipId) {
+  // Parent couple plus every child block belonging to that couple. This is the
+  // unit users expect to move when a neighbouring cousin sibship makes room:
+  // children should not slide away from their own parents.
+  const ids = new Set();
+  const ps = partnerships.find(p => p.id === partnershipId);
+  if (!ps) return ids;
+  if (persons.has(ps.fromId)) ids.add(ps.fromId);
+  if (persons.has(ps.toId)) ids.add(ps.toId);
+  getPartnershipChildIds(partnershipId).forEach(childId => {
+    getDefaultChildBlock(childId, partnershipId).forEach(id => ids.add(id));
+  });
+  return ids;
+}
+
+function addIdsToSet(target, ids) {
+  if (!target || !ids) return;
+  ids.forEach(id => target.add(id));
+}
+
+function getDefaultUpwardFamilyBranch(personId) {
+  // When a construction operation collides with a neighbouring cousin sibship,
+  // the smallest safe displacement unit is not the child alone.  It is the
+  // nearest family branch that keeps that child under their own parents.  If
+  // either parent is themselves a child in an older sibship, move that parent's
+  // whole branch so the gap widens at the generation above; otherwise move the
+  // nuclear family directly.
+  const directParentPshipId = getParentPartnershipForChild(personId);
+  if (directParentPshipId) {
+    const parentPship = partnerships.find(ps => ps.id === directParentPshipId);
+    if (!parentPship) return null;
+
+    const propagated = new Set();
+    let hasUpstreamParent = false;
+    [parentPship.fromId, parentPship.toId].forEach(parentId => {
+      const grandParentPshipId = getParentPartnershipForChild(parentId);
+      if (!grandParentPshipId) return;
+      hasUpstreamParent = true;
+      addIdsToSet(propagated, getDefaultChildBlock(parentId, grandParentPshipId));
+    });
+
+    if (hasUpstreamParent && propagated.has(personId)) return propagated;
+    return getDefaultNuclearFamilyBlock(directParentPshipId);
+  }
+
+  // A spouse/partner may not have a parent link in this pedigree, but if they
+  // are partnered to somebody who is embedded in a sibship, move that embedded
+  // partner's whole sibling branch rather than the spouse alone.
+  for (const ps of partnerships) {
+    if (ps.fromId !== personId && ps.toId !== personId) continue;
+    const otherId = ps.fromId === personId ? ps.toId : ps.fromId;
+    const otherParentPshipId = getParentPartnershipForChild(otherId);
+    if (otherParentPshipId) {
+      const branch = getDefaultChildBlock(otherId, otherParentPshipId);
+      if (branch.has(personId)) return branch;
+    }
+  }
+
+  // If this person is a parent in one or more child-bearing partnerships, keep
+  // their family together.  If they are also a sibling in the generation above,
+  // move their branch from that higher generation so the gap propagates upward.
+  const ownParentPshipId = getParentPartnershipForChild(personId);
+  if (ownParentPshipId) {
+    const branch = getDefaultChildBlock(personId, ownParentPshipId);
+    if (branch.has(personId)) return branch;
+  }
+  const ownFamilies = getChildBearingPartnershipIds(personId);
+  if (ownFamilies.length) return getDefaultNuclearFamilyBlock(ownFamilies[0]);
+
+  return null;
+}
+
+function getDefaultTouchedFamilyIds(ids) {
+  const set = cloneIdSet(ids);
+  const familyIds = new Set();
+  childLinks.forEach(cl => {
+    if (set.has(cl.childId)) familyIds.add(cl.partnershipId);
+  });
+  partnerships.forEach(ps => {
+    if (!set.has(ps.fromId) && !set.has(ps.toId)) return;
+    if (childLinks.some(cl => cl.partnershipId === ps.id)) familyIds.add(ps.id);
+  });
+  return familyIds;
+}
+
+function repairDefaultSibshipInternalOverlaps(partnershipId, protectedIds) {
+  // Keep sibling blocks within one sibship from compressing into each other.
+  // Blocks include partners/descendants, so partner-pairs remain intact.  When
+  // a protected active block is involved, move the unprotected neighbour.
+  protectedIds = protectedIds || new Set();
+  let changed = false;
+  for (let pass = 0; pass < 24; pass++) {
+    let blocks = getSiblingBlocks(partnershipId).filter(b => b.bounds);
+    if (blocks.length < 2) return changed;
+    blocks.sort((a, b) => a.bounds.left - b.bounds.left || a.childX - b.childX);
+    let passChanged = false;
+    for (let i = 1; i < blocks.length; i++) {
+      const prev = blocks[i - 1];
+      const curr = blocks[i];
+      const overlap = prev.bounds.right + DEFAULT_SNAP_GAP - curr.bounds.left;
+      if (overlap <= 0) continue;
+      const currProtected = setsIntersect(curr.ids, protectedIds);
+      const prevProtected = setsIntersect(prev.ids, protectedIds);
+      if (currProtected && !prevProtected) {
+        moveDefaultIds(prev.ids, -overlap, 0);
+      } else {
+        moveDefaultIds(curr.ids, overlap, 0);
+      }
+      changed = true;
+      passChanged = true;
+      break;
+    }
+    if (!passChanged) return changed;
+  }
+  return changed;
+}
+
+function repairDefaultSibshipsForIds(ids, protectedIds) {
+  let changed = false;
+  getDefaultTouchedFamilyIds(ids).forEach(partnershipId => {
+    if (repairDefaultSibshipInternalOverlaps(partnershipId, protectedIds)) changed = true;
+  });
+  return changed;
+}
+
+function repairAllDefaultSibshipInternalOverlaps(protectedIds) {
+  let changed = false;
+  const familyIds = new Set(childLinks.map(cl => cl.partnershipId));
+  familyIds.forEach(partnershipId => {
+    if (repairDefaultSibshipInternalOverlaps(partnershipId, protectedIds)) changed = true;
+  });
+  return changed;
+}
+
+function blockMovableCount(ids) {
+  let count = 0;
+  ids.forEach(id => {
+    const p = persons.get(id);
+    if (p && !p.noSnap) count++;
+  });
+  return count;
+}
+
+function blockScore(ids) {
+  const b = getIdsBounds(ids);
+  const area = b ? b.width * b.height : 0;
+  return ids.size * 1000000 + area;
+}
+
+function addCandidateBlock(candidates, ids, label) {
+  if (!ids || ids.size === 0 || !blockMovableCount(ids)) return;
+  const key = [...ids].sort().join('|');
+  if (candidates.some(c => c.key === key)) return;
+  candidates.push({ ids, label, key, score: blockScore(ids) });
+}
+
+function getDefaultDisplacementBlockForPerson(personId, protectedIds) {
+  // Return a movement unit that preserves family context.  The previous v5
+  // resolver could choose a tiny sibling branch because it scored smallest;
+  // that separated cousin children from their parents.  v6 prefers the nearest
+  // upward family branch first, so spacing propagates to the parent generation
+  // before any single-symbol fallback is considered.
+  protectedIds = protectedIds || new Set();
+  const candidates = [];
+
+  const familyBranch = getDefaultUpwardFamilyBranch(personId);
+  addCandidateBlock(candidates, familyBranch, 'upward-family-branch');
+
+  // If the direct branch is blocked by the active/protected material, try any
+  // child-bearing family in which this person is a parent.  This is still a
+  // family-preserving movement unit.
+  getChildBearingPartnershipIds(personId).forEach(pshipId => {
+    addCandidateBlock(candidates, getDefaultNuclearFamilyBlock(pshipId), 'own-family');
+  });
+
+  // For partner-pairs without children or parent links, keep the pair together.
+  partnerships.forEach(ps => {
+    if (ps.fromId !== personId && ps.toId !== personId) return;
+    // Do not treat consanguineous endpoints as a locked adjacent partner-pair.
+    // They are usually already placed in separate cousin/descendant branches;
+    // default mode should draw the relationship line without dragging either
+    // branch into the other's sibling block.
+    if (isProtectedInternalPartnership(ps)) return;
+    const otherId = ps.fromId === personId ? ps.toId : ps.fromId;
+    const ids = new Set([personId, otherId]);
+    childLinks.filter(cl => cl.partnershipId === ps.id).forEach(cl => {
+      getDefaultChildBlock(cl.childId, ps.id).forEach(id => ids.add(id));
+    });
+    addCandidateBlock(candidates, ids, 'partner-pair');
+  });
+
+  // True last resort: use a single symbol only when there is no family context
+  // to preserve.  This should mainly apply to unconnected newly added people.
+  addCandidateBlock(candidates, new Set([personId]), 'single-person');
+
+  const usable = candidates.filter(c => !setsIntersect(c.ids, protectedIds));
+  const pool = usable.length ? usable : candidates;
+  pool.sort((a, b) => {
+    // Prefer family-aware labels before partner-pair/single-person fallbacks;
+    // then prefer smaller blocks for predictability.
+    const rank = label => label === 'upward-family-branch' ? 0 : label === 'own-family' ? 1 : label === 'partner-pair' ? 2 : 3;
+    const dr = rank(a.label) - rank(b.label);
+    if (dr !== 0) return dr;
+    return a.score - b.score;
+  });
+
+  const candidate = pool[0];
+  return candidate ? cloneIdSet(candidate.ids) : new Set([personId]);
+}
+
+function findExternalOverlapForIds(ids) {
+  const moving = new Set(ids);
+  for (const id of moving) {
+    const p = persons.get(id);
+    if (!p) continue;
+    const r = personRectAt(getPersonX(id), getPersonY(id));
+    for (const [otherId, other] of persons.entries()) {
+      if (moving.has(otherId)) continue;
+      if (rectsOverlap(r, personRectAt(getPersonX(otherId), getPersonY(otherId)), DEFAULT_SNAP_GAP)) {
+        return { id, otherId, rect: r, otherRect: personRectAt(getPersonX(otherId), getPersonY(otherId)), other };
+      }
+    }
+  }
+  return null;
+}
+
+function findAnyPersonOverlapDetailed() {
+  const arr = [];
+  persons.forEach((p, id) => arr.push({ id, person: p, rect: personRectAt(getPersonX(id), getPersonY(id)) }));
+  for (let i = 0; i < arr.length; i++) {
+    for (let j = i + 1; j < arr.length; j++) {
+      if (rectsOverlap(arr[i].rect, arr[j].rect, DEFAULT_SNAP_GAP)) return { a: arr[i], b: arr[j] };
+    }
+  }
+  return null;
+}
+
+function moveGroupToNearestOpen(ids, preferredSide) {
+  const moving = new Set(ids);
+  const bounds = getIdsBounds(moving);
+  if (!bounds) return false;
+  if (!findExternalOverlapForIds(moving)) return true;
+
+  const step = SHAPE_SIZE + DEFAULT_SNAP_GAP;
+  const directions = preferredSide === 'left'
+    ? [{ dx: -1, dy: 0 }, { dx: 1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: -1 }]
+    : [{ dx: 1, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: -1 }];
+
+  for (let ring = 1; ring <= 24; ring++) {
+    for (const dir of directions) {
+      const dx = dir.dx * ring * step;
+      const dy = dir.dy * ring * step;
+      moveDefaultIds(moving, dx, dy);
+      if (!findExternalOverlapForIds(moving)) return true;
+      moveDefaultIds(moving, -dx, -dy);
+    }
+  }
+  return false;
+}
+
+function separateDefaultBlocks(fixedIds, movingIds, preferredSide) {
+  fixedIds = cloneIdSet(fixedIds);
+  movingIds = cloneIdSet(movingIds);
+  if (!fixedIds.size || !movingIds.size || !blockMovableCount(movingIds)) return false;
+  const fixedBounds = getIdsBounds(fixedIds);
+  const movingBounds = getIdsBounds(movingIds);
+  if (!fixedBounds || !movingBounds) return false;
+
+  const fixedCenter = (fixedBounds.left + fixedBounds.right) / 2;
+  const movingCenter = (movingBounds.left + movingBounds.right) / 2;
+  let moveRight;
+  if (Math.abs(movingCenter - fixedCenter) < 1) moveRight = preferredSide !== 'left';
+  else moveRight = movingCenter >= fixedCenter;
+
+  let dx = moveRight
+    ? fixedBounds.right + DEFAULT_SNAP_GAP - movingBounds.left
+    : fixedBounds.left - DEFAULT_SNAP_GAP - movingBounds.right;
+  if (Math.abs(dx) < 1) dx = moveRight ? (SHAPE_SIZE + DEFAULT_SNAP_GAP) : -(SHAPE_SIZE + DEFAULT_SNAP_GAP);
+  moveDefaultIds(movingIds, dx, 0);
+  repairDefaultSibshipsForIds(movingIds, fixedIds);
+  return true;
+}
+
+function resolveDefaultConstructionOverlaps(activeIds, preferredSide) {
+  // Construction-time collision solver. Unlike dragging, creation may push
+  // neighbouring material aside; but it moves whole family blocks, so cousin
+  // sibships keep their parents, partners, and descendants together.
+  const protectedIds = cloneIdSet(activeIds);
+  let movedAny = false;
+
+  for (let iter = 0; iter < 220; iter++) {
+    if (repairAllDefaultSibshipInternalOverlaps(protectedIds)) movedAny = true;
+    const pair = findAnyPersonOverlapDetailed();
+    if (!pair) {
+      if (movedAny) document.getElementById('statusBar').textContent = 'Made room by moving neighbouring family blocks';
+      return true;
+    }
+
+    const aProtected = protectedIds.has(pair.a.id);
+    const bProtected = protectedIds.has(pair.b.id);
+    let fixedIds = null;
+    let movingIds = null;
+
+    if (aProtected && !bProtected) {
+      fixedIds = protectedIds;
+      movingIds = getDefaultDisplacementBlockForPerson(pair.b.id, protectedIds);
+    } else if (bProtected && !aProtected) {
+      fixedIds = protectedIds;
+      movingIds = getDefaultDisplacementBlockForPerson(pair.a.id, protectedIds);
+    } else if (!aProtected && !bProtected) {
+      const aBlock = getDefaultDisplacementBlockForPerson(pair.a.id, protectedIds);
+      const bBlock = getDefaultDisplacementBlockForPerson(pair.b.id, protectedIds);
+      if (setsIntersect(aBlock, bBlock)) {
+        // Same family block: fall back to moving one direct symbol if possible.
+        fixedIds = new Set([pair.a.id]);
+        movingIds = persons.get(pair.b.id)?.noSnap ? new Set([pair.a.id]) : new Set([pair.b.id]);
+      } else {
+        const aBounds = getIdsBounds(aBlock);
+        const bBounds = getIdsBounds(bBlock);
+        const aCenter = aBounds ? (aBounds.left + aBounds.right) / 2 : pair.a.rect.left;
+        const bCenter = bBounds ? (bBounds.left + bBounds.right) / 2 : pair.b.rect.left;
+        if (bCenter >= aCenter) { fixedIds = aBlock; movingIds = bBlock; }
+        else { fixedIds = bBlock; movingIds = aBlock; }
+      }
+    } else {
+      // Both symbols are in the protected active family; local sibling logic
+      // should already have handled this. As a last resort move the active block
+      // to the nearest open position so the user can still place the new person.
+      if (moveGroupToNearestOpen(protectedIds, preferredSide || 'right')) return !findAnyPersonOverlapDetailed();
+      return false;
+    }
+
+    if (!movingIds || !movingIds.size || setsIntersect(movingIds, protectedIds) || !blockMovableCount(movingIds)) {
+      if (moveGroupToNearestOpen(protectedIds, preferredSide || 'right')) return !findAnyPersonOverlapDetailed();
+      return false;
+    }
+
+    if (!separateDefaultBlocks(fixedIds, movingIds, preferredSide || 'right')) {
+      if (moveGroupToNearestOpen(protectedIds, preferredSide || 'right')) return !findAnyPersonOverlapDetailed();
+      return false;
+    }
+    movedAny = true;
+  }
+
+  if (moveGroupToNearestOpen(protectedIds, preferredSide || 'right')) return !findAnyPersonOverlapDetailed();
+  return !findAnyPersonOverlapDetailed();
+}
+
+function protectDraggedGroupFromOverlap(dragIds, origins) {
+  // Dragging should never push unrelated pedigrees around. If the user drops a
+  // dragged pedigree onto another one, move only the dragged group to the
+  // nearest open slot; if no slot is found, revert that drag.
+  const moving = new Set(dragIds);
+  if (!findExternalOverlapForIds(moving)) return true;
+  if (moveGroupToNearestOpen(moving, 'right')) return true;
+  origins.forEach((orig, id) => setPersonPos(id, orig.x, orig.y));
+  document.getElementById('statusBar').textContent = 'Move blocked to avoid overlapping another pedigree';
+  return false;
+}
+
+function syncAfterDefaultPlacement() {
+  updateAllConnections();
+  updateNumbering();
+  updateTextWrapping();
+  expandCanvasIfNeeded();
+}
+
+
+function getDefaultPartnershipAnchorScore(personId) {
+  // Higher score means this person is already embedded in the pedigree and
+  // should act as the placement anchor when a partnership is created. This
+  // makes partner-mode click order harmless: clicking the new/free partner
+  // first and the sibling second still anchors the placement on the sibling.
+  if (!persons.has(personId)) return -1;
+  let score = 0;
+  const group = getConnectedGroup(personId);
+  score += group.size * 10;
+  if (getParentPartnershipForChild(personId)) score += 1000; // existing sibling/child row member
+  partnerships.forEach(ps => {
+    if (ps.fromId === personId || ps.toId === personId) score += 40;
+  });
+  childLinks.forEach(cl => {
+    if (cl.childId === personId) score += 30;
+    const ps = partnerships.find(p => p.id === cl.partnershipId);
+    if (ps && (ps.fromId === personId || ps.toId === personId)) score += 60;
+  });
+  return score;
+}
+
+function chooseDefaultPartnershipPlacementIds(fromId, toId) {
+  // Determine which endpoint should be kept as the fixed construction anchor
+  // and which endpoint should be placed as the partner.  The drawn partnership
+  // still uses the original from/to ids; this only controls snap placement.
+  const fromParentPship = getParentPartnershipForChild(fromId);
+  const toParentPship = getParentPartnershipForChild(toId);
+
+  if (fromParentPship && !toParentPship) return { anchorId: fromId, partnerId: toId };
+  if (toParentPship && !fromParentPship) return { anchorId: toId, partnerId: fromId };
+
+  const fromScore = getDefaultPartnershipAnchorScore(fromId);
+  const toScore = getDefaultPartnershipAnchorScore(toId);
+  if (toScore > fromScore) return { anchorId: toId, partnerId: fromId };
+  return { anchorId: fromId, partnerId: toId };
+}
+
+function chooseSideForPartner(personId) {
+  // Default-mode partner insertion should preserve sibling order.  Choose the
+  // side with fewer same-row siblings to push; ties use the right side so the
+  // initial build flow remains predictable.
+  const parentCL = childLinks.find(cl => cl.childId === personId);
+  if (!parentCL) return 'right';
+
+  const siblings = childLinks
+    .filter(cl => cl.partnershipId === parentCL.partnershipId)
+    .map(cl => cl.childId)
+    .filter(id => persons.has(id));
+  if (siblings.length <= 1) return 'right';
+
+  const personX = getPersonX(personId);
+  let rightCount = 0, leftCount = 0;
+  siblings.forEach(sibId => {
+    if (sibId === personId) return;
+    const sibX = getPersonX(sibId);
+    if (sibX > personX) rightCount++;
+    else if (sibX < personX) leftCount++;
+  });
+
+  if (rightCount < leftCount) return 'right';
+  if (leftCount < rightCount) return 'left';
+  return 'right';
+}
+
+function addPartnership(fromId, toId, customId, type) {
+  if (!customId) pushUndo();
+  const id = customId || 'pship-' + (++lineIdCounter);
+  let pType = canonicalPartnershipType(fromId, toId, type || currentPartnershipType, customId || null);
+  const svg = document.getElementById('lines-layer');
+  const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+  line.classList.add('partnership-line');
+  line.setAttribute('stroke', '#1a2332');
+  line.setAttribute('stroke-width', '2');
+  line.id = id;
+  line.style.pointerEvents = 'stroke';
+  line.style.cursor = 'pointer';
+
+  const hitArea = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+  hitArea.setAttribute('stroke', 'transparent');
+  hitArea.setAttribute('stroke-width', '28');
+  hitArea.classList.add('conn-hit');
+
+  let line2 = null;
+  if (isConsanguineousPartnershipType(pType)) {
+    line2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line2.setAttribute('stroke', '#1a2332');
+    line2.setAttribute('stroke-width', '2');
+    line2.style.pointerEvents = 'none';
+    svg.appendChild(line2);
+  }
+
+  const onLineClick = (ev) => {
+    if (currentTool === 'child') {
+      deselectAll();
+      childPartnershipSource = id;
+      line.classList.add('highlighted');
+      document.getElementById('statusBar').textContent = 'Partnership selected — now click a person to add as child';
+      return;
+    }
+    if (currentTool === 'move') {
+      if (ev && ev.shiftKey) {
+        document.querySelectorAll('.person.selected, .person.multi-selected, .label.selected').forEach(el => el.classList.remove('selected', 'multi-selected'));
+        selectedPerson = null; selectedLabel = null; multiSelected.clear(); hideProps(); hideMultiSelectPanel();
+        document.querySelectorAll('.child-link-highlighted').forEach(el => el.classList.remove('child-link-highlighted'));
+        selectedChildLinkId = null; multiSelectedChildLinks.clear();
+        document.getElementById('childLinkPropsPanel').classList.remove('visible');
+        document.getElementById('multiChildLinkPanel').classList.remove('visible');
+        removeLinkDeleteBtn();
+        if (selectedPartnershipId && !multiSelectedPartnerships.has(selectedPartnershipId)) {
+          multiSelectedPartnerships.add(selectedPartnershipId);
+          selectedPartnershipId = null;
+          document.getElementById('partnershipPropsPanel').classList.remove('visible');
+        }
+        toggleMultiSelectPartnership(id, line);
+        return;
+      }
+      deselectAll();
+      selectedPartnershipId = id;
+      line.classList.add('highlighted');
+      showPartnershipProps(id);
+      showLinkDeleteBtn(id, 'partnership');
+    }
+  };
+  line.addEventListener('click', onLineClick);
+  hitArea.addEventListener('click', onLineClick);
+  hitArea.addEventListener('touchend', (ev) => { if (ev.cancelable) ev.preventDefault(); onLineClick(ev); });
+
+  svg.appendChild(hitArea);
+  svg.appendChild(line);
+  const pship = { id, fromId, toId, type: pType, el: line, hitEl: hitArea, el2: line2, slash: null };
+
+  let partnerGroup = null;
+  let crossPedigree = false;
+  let skipDefaultPartnershipPlacement = false;
+  let side = 'right';
+  let anchorId = fromId;
+  let partnerId = toId;
+  if (!customId && !individualMoveMode) {
+    const placement = chooseDefaultPartnershipPlacementIds(fromId, toId);
+    anchorId = placement.anchorId;
+    partnerId = placement.partnerId;
+    partnerGroup = getConnectedGroup(partnerId);
+    crossPedigree = !partnerGroup.has(anchorId);
+    // If the endpoints already belong to the same connected pedigree, this is
+    // an internal relationship line (commonly consanguinity, e.g. cousins or
+    // descendants marrying). Do not run ordinary spouse insertion for ANY
+    // partnership type in this situation: snapping the two existing branches
+    // together makes the sibling-block resolver reserve one enormous block and
+    // introduces huge gaps in the sibships. Placement should be line-only;
+    // children of this partnership can still be added and placed later.
+    skipDefaultPartnershipPlacement = !crossPedigree;
+    partnerGroup.delete(partnerId);
+    side = chooseDefaultPartnerSide(anchorId, partnerId);
+  }
+
+  partnerships.push(pship);
+
+  if (!customId && !individualMoveMode && !skipDefaultPartnershipPlacement) {
+    const anchorP = persons.get(anchorId), partnerP = persons.get(partnerId);
+    if (anchorP && partnerP && !partnerP.noSnap) {
+      const sameExistingPedigree = !crossPedigree;
+      const oldX = getPersonX(partnerId);
+      const oldY = getPersonY(partnerId);
+      const anchorX = getPersonX(anchorId);
+      const anchorY = getPersonY(anchorId);
+      const newX = sameExistingPedigree ? oldX : (side === 'left' ? anchorX - partnerGap : anchorX + partnerGap);
+      const newY = anchorY;
+      const movingIds = new Set([partnerId]);
+      if (crossPedigree && partnerGroup) partnerGroup.forEach(id => movingIds.add(id));
+
+      const parentPshipId = getParentPartnershipForChild(anchorId);
+
+      setPersonPos(partnerId, newX, newY);
+
+      if (crossPedigree && partnerGroup && partnerGroup.size > 0) {
+        const dx = newX - oldX;
+        const dy = newY - oldY;
+        moveDefaultIds(partnerGroup, dx, dy);
+      }
+
+      const lockedPartnerGroup = new Set(movingIds);
+      lockedPartnerGroup.add(anchorId);
+      if (parentPshipId) {
+        getDefaultChildBlock(anchorId, parentPshipId).forEach(id => lockedPartnerGroup.add(id));
+        reserveSiblingSpaceForIds(parentPshipId, lockedPartnerGroup, anchorId);
+      }
+      resolveDefaultConstructionOverlaps(lockedPartnerGroup, side);
+    }
+    alignConnectedPersons();
+  } else {
+    updatePartnershipPos(pship);
+  }
+
+  syncAfterDefaultPlacement();
+  scheduleSave();
+  return pship;
+}
+
+
+function removePartnership(id) {
+  pushUndo();
+  const idx = partnerships.findIndex(p => p.id === id);
+  if (idx === -1) return;
+  for (let i = childLinks.length - 1; i >= 0; i--) {
+    if (childLinks[i].partnershipId === id) { childLinks[i].els.forEach(el => el.remove()); childLinks.splice(i, 1); }
+  }
+  // Remove twin links attached to this partnership's children
+  for (let i = twinLinks.length - 1; i >= 0; i--) {
+    if (twinLinks[i].partnershipId === id) { twinLinks[i].els.forEach(el => el.remove()); twinLinks.splice(i, 1); }
+  }
+  const ps = partnerships[idx];
+  ps.el.remove(); ps.hitEl.remove();
+  if (ps.el2) ps.el2.remove();
+  if (ps.slash) ps.slash.forEach(s => s.remove());
+  if (ps.bridgeMask) { ps.bridgeMask.remove(); ps.bridgeArc.remove(); }
+  if (ps.bridgeMask2) { ps.bridgeMask2.remove(); ps.bridgeArc2.remove(); }
+  partnerships.splice(idx, 1);
+  multiSelectedPartnerships.delete(id);
+  // Clean up child links that were removed from multi-selected set
+  [...multiSelectedChildLinks].forEach(cid => { if (!childLinks.find(c => c.id === cid)) multiSelectedChildLinks.delete(cid); });
+  updateTextWrapping();
+  scheduleSave();
+}
+
+function updatePartnershipPos(pship) {
+  const fromP = persons.get(pship.fromId);
+  const toP = persons.get(pship.toId);
+  if (!fromP || !toP) return;
+  const fc = getPersonCenter(fromP), tc = getPersonCenter(toP);
+  const geom = computePartnershipGeom(fc.x, fc.y, tc.x, tc.y, pship.type);
+  [pship.el, pship.hitEl].forEach(l => { l.setAttribute('x1', geom.x1); l.setAttribute('y1', geom.y1); l.setAttribute('x2', geom.x2); l.setAttribute('y2', geom.y2); });
+
+  // Consanguineous: second parallel line
+  if (geom.consang && pship.el2) {
+    pship.el2.setAttribute('x1', geom.consang.x1); pship.el2.setAttribute('y1', geom.consang.y1);
+    pship.el2.setAttribute('x2', geom.consang.x2); pship.el2.setAttribute('y2', geom.consang.y2);
+  }
+
+  // Separated: slash marks through the line
+  if (geom.slashLines) {
+    if (pship.slash) pship.slash.forEach(s => s.remove());
+    const svg = document.getElementById('lines-layer');
+    const slashEls = geom.slashLines.map(sl => {
+      const s = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      s.setAttribute('x1', sl.x1); s.setAttribute('y1', sl.y1);
+      s.setAttribute('x2', sl.x2); s.setAttribute('y2', sl.y2);
+      s.setAttribute('stroke', STROKE_COLOR); s.setAttribute('stroke-width', '2');
+      s.style.pointerEvents = 'none';
+      svg.appendChild(s);
+      return s;
+    });
+    pship.slash = slashEls;
+  } else {
+    if (pship.slash) { pship.slash.forEach(s => s.remove()); pship.slash = null; }
+  }
+}
+
+// ══════════════════════
+// CHILD CONNECTIONS
+// ══════════════════════
+
+function addChildLink(partnershipId, childId, customId) {
+  if (!customId) normalizeRelatedPartnershipTypes();
+  if (!customId) pushUndo();
+  const id = customId || 'child-' + (++lineIdCounter);
+  const pship = partnerships.find(p => p.id === partnershipId);
+  if (!pship) return;
+  if (childLinks.some(cl => cl.partnershipId === partnershipId && cl.childId === childId)) { document.getElementById('statusBar').textContent = 'Child link already exists'; return; }
+
+  const svg = document.getElementById('lines-layer');
+  const vertLine = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  vertLine.setAttribute('stroke', '#1a2332');
+  vertLine.setAttribute('stroke-width', '2');
+  vertLine.setAttribute('fill', 'none');
+  vertLine.style.pointerEvents = 'stroke';
+  vertLine.style.cursor = 'pointer';
+  vertLine.id = id;
+
+  const hitPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  hitPath.setAttribute('stroke', 'transparent');
+  hitPath.setAttribute('stroke-width', '24');
+  hitPath.setAttribute('fill', 'none');
+  hitPath.classList.add('conn-hit');
+
+  const onChildClick = (ev) => {
+    if (currentTool === 'move') {
+      if (ev && ev.shiftKey) {
+        document.querySelectorAll('.person.selected, .person.multi-selected, .label.selected').forEach(el => el.classList.remove('selected', 'multi-selected'));
+        selectedPerson = null; selectedLabel = null; multiSelected.clear(); hideProps(); hideMultiSelectPanel();
+        document.querySelectorAll('.partnership-line.highlighted').forEach(el => el.classList.remove('highlighted'));
+        selectedPartnershipId = null; multiSelectedPartnerships.clear();
+        document.getElementById('partnershipPropsPanel').classList.remove('visible');
+        document.getElementById('multiPartnershipPanel').classList.remove('visible');
+        removeLinkDeleteBtn();
+        if (selectedChildLinkId && !multiSelectedChildLinks.has(selectedChildLinkId)) {
+          multiSelectedChildLinks.add(selectedChildLinkId);
+          selectedChildLinkId = null;
+          document.getElementById('childLinkPropsPanel').classList.remove('visible');
+        }
+        toggleMultiSelectChildLink(id);
+        return;
+      }
+      deselectAll();
+      selectedChildLinkId = id;
+      vertLine.classList.add('child-link-highlighted');
+      showChildLinkProps(id);
+      showLinkDeleteBtn(id, 'child');
+    }
+  };
+  vertLine.addEventListener('click', onChildClick);
+  hitPath.addEventListener('click', onChildClick);
+  hitPath.addEventListener('touchend', (ev) => { if (ev.cancelable) ev.preventDefault(); onChildClick(ev); });
+
+  svg.appendChild(hitPath);
+  svg.appendChild(vertLine);
+  const els = [vertLine, hitPath];
+  const cl = { id, partnershipId, childId, els, branchYOffset: 0, dashed: false };
+
+  let childGroup = null;
+  let crossPedigree = false;
+  let oldX = 0, oldY = 0;
+  if (!customId && !individualMoveMode) {
+    childGroup = getConnectedGroup(childId);
+    crossPedigree = !childGroup.has(pship.fromId) && !childGroup.has(pship.toId);
+    childGroup.delete(childId);
+    oldX = getPersonX(childId);
+    oldY = getPersonY(childId);
+  }
+
+  const existingSiblings = getExistingChildIds(partnershipId, childId).filter(id => {
+    const p = persons.get(id);
+    return p && !p.noSnap;
+  });
+
+  childLinks.push(cl);
+
+  if (!customId && !individualMoveMode) {
+    const child = persons.get(childId);
+    const fp = persons.get(pship.fromId), tp = persons.get(pship.toId);
+    let childGroupMoved = false;
+    if (child && !child.noSnap && fp && tp) {
+      const movingIds = new Set([childId]);
+      if (crossPedigree && childGroup) childGroup.forEach(id => movingIds.add(id));
+
+      if (existingSiblings.length === 0) {
+        const parentY = Math.min(getPersonY(pship.fromId), getPersonY(pship.toId));
+        const targetY = parentY + childHeight;
+        const targetX = (getPersonX(pship.fromId) + getPersonX(pship.toId)) / 2;
+        clearSlotForDefaultPlacement(targetX, targetY, movingIds, 'nearest');
+        setPersonPos(childId, targetX, targetY);
+        if (crossPedigree && childGroup && childGroup.size > 0) {
+          moveDefaultIds(childGroup, targetX - oldX, targetY - oldY);
+          childGroupMoved = true;
+        }
+      } else {
+        const targetY = getPersonY(existingSiblings[0]);
+        setPersonPos(childId, getPersonX(childId), targetY);
+
+        const allSiblingIds = [...existingSiblings, childId];
+        const hasAnchors = allSiblingIds.some(sid => childHasExternalPartner(sid, allSiblingIds));
+
+        if (!hasAnchors) {
+          distributeChildren(partnershipId);
+          // Simple sibships may still distribute quickly. No global collision
+          // pass follows this; if the new child collides with a neighbouring
+          // pedigree, only the new child's own attached group is moved.
+          if (crossPedigree && childGroup && childGroup.size > 0) {
+            moveDefaultIds(childGroup, getPersonX(childId) - oldX, getPersonY(childId) - oldY);
+            childGroupMoved = true;
+          }
+        } else {
+          const blocks = getSiblingBlocks(partnershipId, childId);
+          const desiredX = oldX;
+          let targetX = desiredX;
+          let side = 'right';
+
+          if (blocks.length === 0 || desiredX <= blocks[0].childX) {
+            side = 'left';
+            targetX = (blocks[0] ? blocks[0].bounds.left : desiredX) - DEFAULT_SNAP_GAP - SHAPE_SIZE;
+          } else if (desiredX >= blocks[blocks.length - 1].childX) {
+            side = 'right';
+            targetX = blocks[blocks.length - 1].bounds.right + DEFAULT_SNAP_GAP;
+          } else {
+            let insertAfterIdx = 0;
+            for (let i = 0; i < blocks.length - 1; i++) {
+              if (desiredX >= blocks[i].childX && desiredX <= blocks[i + 1].childX) { insertAfterIdx = i; break; }
+            }
+            const leftBlock = blocks[insertAfterIdx];
+            const rightBlock = blocks[insertAfterIdx + 1];
+            side = 'right';
+            const leftEdge = leftBlock.bounds.right + DEFAULT_SNAP_GAP;
+            const rightEdge = rightBlock.bounds.left - DEFAULT_SNAP_GAP - SHAPE_SIZE;
+            if (rightEdge < leftEdge) {
+              const needed = leftEdge - rightEdge;
+              shiftSiblingBlocks(partnershipId, rightBlock.bounds.left - 1, 'right', needed, movingIds);
+            }
+            targetX = Math.max(leftEdge, Math.min(desiredX, Math.max(leftEdge, rightEdge)));
+          }
+
+          const childRect = personRectAt(targetX, targetY);
+          openSiblingSlot(partnershipId, childRect, side, movingIds);
+          setPersonPos(childId, targetX, targetY);
+          if (crossPedigree && childGroup && childGroup.size > 0) {
+            const dx = targetX - oldX;
+            const dy = targetY - oldY;
+            moveDefaultIds(childGroup, dx, dy);
+            childGroupMoved = true;
+          }
+          reserveSiblingSpaceForIds(partnershipId, movingIds, childId);
+        }
+      }
+
+      if (crossPedigree && childGroup && childGroup.size > 0 && !childGroupMoved) {
+        const dx = getPersonX(childId) - oldX;
+        const dy = getPersonY(childId) - oldY;
+        moveDefaultIds(childGroup, dx, dy);
+      }
+      reserveSiblingSpaceForIds(partnershipId, movingIds, childId);
+    }
+    alignConnectedPersons();
+    resolveDefaultConstructionOverlaps(getDefaultNuclearFamilyBlock(partnershipId), 'right');
+  }
+
+  updateChildLinkPos(cl);
+  syncAfterDefaultPlacement();
+  scheduleSave();
+  return cl;
+}
+
+
+function snapChildHeight(partnershipId, childId) {
+  const pship = partnerships.find(p => p.id === partnershipId);
+  if (!pship) return;
+  const fp = persons.get(pship.fromId), tp = persons.get(pship.toId);
+  if (!fp || !tp) return;
+  const child = persons.get(childId);
+  if (!child) return;
+  const parentY = Math.min(parseFloat(fp.el.style.top), parseFloat(tp.el.style.top));
+  const newY = parentY + childHeight;
+  child.el.style.top = newY + 'px';
+  child.y = newY;
+}
+
+function distributeChildren(partnershipId) {
+  const pship = partnerships.find(p => p.id === partnershipId);
+  if (!pship) return;
+  const fp = persons.get(pship.fromId), tp = persons.get(pship.toId);
+  if (!fp || !tp) return;
+  const leftX = Math.min(parseFloat(fp.el.style.left), parseFloat(tp.el.style.left));
+  const rightX = Math.max(parseFloat(fp.el.style.left), parseFloat(tp.el.style.left));
+  const midX = (leftX + rightX) / 2;
+  const parentGap = rightX - leftX;
+
+  // Include noSnap children (needed by other logic) but filter out siblingFixed
+  // children — these were placed outside the row by the between-siblings handler
+  // and must not inflate spacing or become anchors
+  const kids = childLinks.filter(cl => cl.partnershipId === partnershipId).map(cl => cl.childId)
+    .filter(id => { const p = persons.get(id); return !p || !p.siblingFixed; });
+  if (kids.length === 0) return;
+
+  if (kids.length === 1) {
+    // Single child: centre under parents
+    const child = persons.get(kids[0]);
+    if (child && !child.noSnap) {
+      child.el.style.left = midX + 'px';
+      child.x = midX;
+    }
+    constrainChildrenToBoundaries(partnershipId, kids);
+    return;
+  }
+
+  const childSpacing = Math.min(parentGap, partnerGap);
+
+  // Find ALL children with external partnerships (anchors).
+  // These must stay at their current positions because moving them cascades
+  // through their partners (e.g. shared partners in between-siblings setups).
+  const anchors = [];
+  for (const kid of kids) {
+    const kidP = persons.get(kid);
+    if (!kidP) continue;
+    const kidPships = partnerships.filter(p => p.fromId === kid || p.toId === kid);
+    for (const kp of kidPships) {
+      const partnerId = kp.fromId === kid ? kp.toId : kp.fromId;
+      if (kids.includes(partnerId)) continue; // sibling partner, not external
+      const partner = persons.get(partnerId);
+      if (!partner) continue;
+      anchors.push(kid);
+      break;
+    }
+  }
+
+  // Sort by current X to preserve relative order
+  kids.sort((a, b) => parseFloat(persons.get(a).el.style.left) - parseFloat(persons.get(b).el.style.left));
+
+  if (anchors.length >= 2) {
+    // Multiple anchors: keep them all at their current positions,
+    // distribute free children evenly between the outermost anchors,
+    // avoiding any external partner positions
+    anchors.sort((a, b) => parseFloat(persons.get(a).el.style.left) - parseFloat(persons.get(b).el.style.left));
+    const leftAnchorX = parseFloat(persons.get(anchors[0]).el.style.left);
+    const rightAnchorX = parseFloat(persons.get(anchors[anchors.length - 1]).el.style.left);
+    const anchorSet = new Set(anchors);
+    const freeKids = kids.filter(id => !anchorSet.has(id) && !persons.get(id)?.noSnap);
+    if (freeKids.length > 0) {
+      // Collect external partner positions to avoid — but only those BETWEEN
+      // the outermost anchors (partners on the outside don't affect distribution)
+      const occupied = new Set();
+      anchors.forEach(aid => {
+        partnerships.forEach(kp => {
+          if (kp.fromId !== aid && kp.toId !== aid) return;
+          const partnerId = kp.fromId === aid ? kp.toId : kp.fromId;
+          if (kids.includes(partnerId)) return;
+          const partner = persons.get(partnerId);
+          if (!partner) return;
+          const px = parseFloat(partner.el.style.left);
+          // Only include if between the outermost anchors
+          if (px > leftAnchorX && px < rightAnchorX) occupied.add(px);
+        });
+      });
+      const spacing = (rightAnchorX - leftAnchorX) / (freeKids.length + 1);
+      freeKids.forEach((cid, i) => {
+        const child = persons.get(cid);
+        let targetX = leftAnchorX + (i + 1) * spacing;
+        // Nudge away from any occupied partner position
+        for (const ox of occupied) {
+          if (Math.abs(targetX - ox) < SHAPE_SIZE) {
+            targetX = (targetX < ox) ? ox - SHAPE_SIZE - 4 : ox + SHAPE_SIZE + 4;
+          }
+        }
+        child.el.style.left = targetX + 'px';
+        child.x = parseFloat(child.el.style.left);
+      });
+    }
+  } else if (anchors.length === 1) {
+    const anchorId = anchors[0];
+    const anchorP = persons.get(anchorId);
+    const anchorX = parseFloat(anchorP.el.style.left);
+    const anchorIdx = kids.indexOf(anchorId);
+
+    // Find external partner positions to skip over, BUT only when the partner
+    // is BETWEEN the anchor and other siblings (i.e. inside the sibship).
+    // If the partner is on the outside (beyond the edge), no offset is needed
+    // because no children are distributed past it.
+    let rightPartnerWidth = 0;
+    let leftPartnerWidth = 0;
+    const hasSiblingsRight = anchorIdx < kids.length - 1;
+    const hasSiblingsLeft = anchorIdx > 0;
+    const anchorPships = partnerships.filter(p => p.fromId === anchorId || p.toId === anchorId);
+    for (const kp of anchorPships) {
+      const partnerId = kp.fromId === anchorId ? kp.toId : kp.fromId;
+      if (kids.includes(partnerId)) continue; // sibling partner, not external
+      const partner = persons.get(partnerId);
+      if (!partner) continue;
+      const px = parseFloat(partner.el.style.left);
+      if (px > anchorX && hasSiblingsRight) {
+        rightPartnerWidth = Math.max(rightPartnerWidth, px - anchorX);
+      } else if (px < anchorX && hasSiblingsLeft) {
+        leftPartnerWidth = Math.max(leftPartnerWidth, anchorX - px);
+      }
+    }
+
+    // Distribute children on BOTH sides of the anchor, keeping anchor in place
+    // and skipping over any partner positions
+    for (let i = anchorIdx - 1; i >= 0; i--) {
+      const child = persons.get(kids[i]);
+      if (child && !child.noSnap) {
+        const offset = (anchorIdx - i) * childSpacing + leftPartnerWidth;
+        child.el.style.left = (anchorX - offset) + 'px';
+        child.x = parseFloat(child.el.style.left);
+      }
+    }
+    for (let i = anchorIdx + 1; i < kids.length; i++) {
+      const child = persons.get(kids[i]);
+      if (child && !child.noSnap) {
+        const offset = (i - anchorIdx) * childSpacing + rightPartnerWidth;
+        child.el.style.left = (anchorX + offset) + 'px';
+        child.x = parseFloat(child.el.style.left);
+      }
+    }
+  } else {
+    // Normal centered distribution
+    const totalWidth = childSpacing * (kids.length - 1);
+    const startX = midX - totalWidth / 2;
+    kids.forEach((cid, i) => {
+      const child = persons.get(cid);
+      if (child && !child.noSnap) {
+        const newX = startX + childSpacing * i;
+        child.el.style.left = newX + 'px';
+        child.x = newX;
+      }
+    });
+  }
+
+  // Post-pass: ensure distributed children don't overlap with siblingFixed children
+  constrainChildrenToBoundaries(partnershipId, kids);
+}
+
+// After distributing non-fixed children, check if they overlap with siblingFixed
+// boundary children (placed by the between-siblings handler at the edges of the row).
+// If so, compress the distribution to fit within the available region.
+// Works with one or more fixed boundaries.
+function constrainChildrenToBoundaries(pshipId, distributedKids) {
+  const allChildIds = childLinks.filter(cl => cl.partnershipId === pshipId).map(cl => cl.childId);
+  const fixedIds = allChildIds.filter(id => {
+    const p = persons.get(id);
+    return p && p.siblingFixed && !p.noSnap;
+  });
+  if (fixedIds.length === 0) return;
+
+  const nonSnapKids = distributedKids.filter(id => {
+    const p = persons.get(id);
+    return p && !p.noSnap;
+  });
+  if (nonSnapKids.length === 0) return;
+
+  const fixedXs = fixedIds.map(id => parseFloat(persons.get(id).el.style.left)).sort((a, b) => a - b);
+
+  // Check if any non-fixed child overlaps with any fixed child (within SHAPE_SIZE)
+  let hasOverlap = false;
+  for (const kid of nonSnapKids) {
+    const kx = parseFloat(persons.get(kid).el.style.left);
+    for (const fx of fixedXs) {
+      if (Math.abs(kx - fx) < SHAPE_SIZE) { hasOverlap = true; break; }
+    }
+    if (hasOverlap) break;
+  }
+  if (!hasOverlap) return;
+
+  // Determine the available region.
+  // Non-fixed children should sit between (not on top of) fixed children.
+  const leftmostFixed = fixedXs[0];
+  const rightmostFixed = fixedXs[fixedXs.length - 1];
+
+  let leftBound, rightBound;
+  if (fixedXs.length >= 2) {
+    // Two+ fixed children: constrain between the outermost pair
+    leftBound = leftmostFixed + SHAPE_SIZE;
+    rightBound = rightmostFixed - SHAPE_SIZE;
+  } else {
+    // Single fixed child: determine which side the non-fixed children are on
+    const kidXs = nonSnapKids.map(id => parseFloat(persons.get(id).el.style.left));
+    const kidCenter = (Math.min(...kidXs) + Math.max(...kidXs)) / 2;
+    if (kidCenter >= leftmostFixed) {
+      // Kids are (mostly) to the right — left boundary from fixed child
+      leftBound = leftmostFixed + SHAPE_SIZE;
+      rightBound = Math.max(...kidXs);
+      // Ensure enough room for all kids
+      const minNeeded = (nonSnapKids.length - 1) * SHAPE_SIZE;
+      if (rightBound - leftBound < minNeeded) rightBound = leftBound + minNeeded;
+    } else {
+      // Kids are (mostly) to the left — right boundary from fixed child
+      rightBound = leftmostFixed - SHAPE_SIZE;
+      leftBound = Math.min(...kidXs);
+      const minNeeded = (nonSnapKids.length - 1) * SHAPE_SIZE;
+      if (rightBound - leftBound < minNeeded) leftBound = rightBound - minNeeded;
+    }
+  }
+
+  if (rightBound <= leftBound) return; // no usable space
+
+  // Redistribute within the available region
+  const availableWidth = rightBound - leftBound;
+  if (nonSnapKids.length === 1) {
+    const child = persons.get(nonSnapKids[0]);
+    const newX = leftBound + availableWidth / 2;
+    child.el.style.left = newX + 'px';
+    child.x = newX;
+  } else {
+    const spacing = availableWidth / (nonSnapKids.length - 1);
+    // spacing may be < SHAPE_SIZE if too many children — overlap warning will catch that
+    nonSnapKids.sort((a, b) => parseFloat(persons.get(a).el.style.left) - parseFloat(persons.get(b).el.style.left));
+    nonSnapKids.forEach((cid, i) => {
+      const child = persons.get(cid);
+      const newX = leftBound + i * spacing;
+      child.el.style.left = newX + 'px';
+      child.x = newX;
+    });
+  }
+}
+
+function removeChildLink(id) {
+  pushUndo();
+  const idx = childLinks.findIndex(c => c.id === id);
+  if (idx === -1) return;
+  childLinks[idx].els.forEach(el => el.remove());
+  childLinks.splice(idx, 1);
+  multiSelectedChildLinks.delete(id);
+  scheduleSave();
+}
+
+function updateChildLinkPos(cl) {
+  const pship = partnerships.find(p => p.id === cl.partnershipId);
+  const child = persons.get(cl.childId);
+  if (!pship || !child) return;
+  const fromP = persons.get(pship.fromId), toP = persons.get(pship.toId);
+  if (!fromP || !toP) return;
+  const fc = getPersonCenter(fromP), tc = getPersonCenter(toP);
+  const midX = (fc.x + tc.x) / 2, midY = (fc.y + tc.y) / 2;
+  const childCenter = getPersonCenter(child);
+  const childTop = parseFloat(child.el.style.top);
+
+  const siblingIds = childLinks.filter(c => c.partnershipId === cl.partnershipId).map(c => c.childId);
+
+  // Check if twin
+  const twinLink = twinLinks.find(t => t.child1Id === cl.childId || t.child2Id === cl.childId);
+  let twinInfo = null;
+  if (twinLink) {
+    const otherChildId = twinLink.child1Id === cl.childId ? twinLink.child2Id : twinLink.child1Id;
+    const otherChild = persons.get(otherChildId);
+    if (otherChild) {
+      twinInfo = { otherCenterX: getPersonCenter(otherChild).x, otherTop: parseFloat(otherChild.el.style.top) };
+    }
+  }
+
+  // Gather non-noSnap sibling tops for noSnap branch calculation
+  const siblingTops = siblingIds
+    .filter(id => { const p = persons.get(id); return p && !p.noSnap && id !== cl.childId; })
+    .map(id => parseFloat(persons.get(id).el.style.top));
+
+  const pathD = computeChildLinkD(midX, midY, childCenter.x, childTop, child.noSnap, siblingTops, twinInfo, cl.branchYOffset || 0);
+  cl.els[0].setAttribute('d', pathD);
+  cl.els[1].setAttribute('d', pathD);
+}
+
+function getPersonCenter(p) {
+  return { x: parseFloat(p.el.style.left) + SHAPE_HALF, y: parseFloat(p.el.style.top) + SHAPE_HALF };
+}
+
+// ══════════════════════
+// LINE CROSSING BRIDGES
+// ══════════════════════
+
+// Parse an SVG path d-string (M/L commands only) into {x,y} points
+function parsePathPoints(d) {
+  const pts = [];
+  const re = /[ML]\s*([\d.\-e]+)[\s,]+([\d.\-e]+)/gi;
+  let m;
+  while ((m = re.exec(d)) !== null) {
+    pts.push({ x: parseFloat(m[1]), y: parseFloat(m[2]) });
+  }
+  return pts;
+}
+
+// Collect all horizontal and vertical line segments from all connections
+function collectAllSegments() {
+  const segs = [];
+  const eps = 0.5; // tolerance for axis-alignment
+
+  // Child link paths — tagged with parent partnership ID (fam) so siblings are recognised
+  childLinks.forEach(cl => {
+    const d = cl.els[0].getAttribute('d');
+    if (!d) return;
+    const pts = parsePathPoints(d);
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1];
+      if (Math.abs(a.y - b.y) < eps) {
+        segs.push({ type: 'h', y: a.y, x1: Math.min(a.x, b.x), x2: Math.max(a.x, b.x), src: cl.id, fam: cl.partnershipId });
+      } else if (Math.abs(a.x - b.x) < eps) {
+        segs.push({ type: 'v', x: a.x, y1: Math.min(a.y, b.y), y2: Math.max(a.y, b.y), src: cl.id, fam: cl.partnershipId });
+      }
+    }
+  });
+
+  // Partnership lines (SVG <line> elements) — fam = own partnership ID
+  // so crossings with own children's stems are recognised as same-family
+  partnerships.forEach(p => {
+    const x1 = parseFloat(p.el.getAttribute('x1')), y1 = parseFloat(p.el.getAttribute('y1'));
+    const x2 = parseFloat(p.el.getAttribute('x2')), y2 = parseFloat(p.el.getAttribute('y2'));
+    if (Math.abs(y1 - y2) < eps) {
+      segs.push({ type: 'h', y: y1, x1: Math.min(x1, x2), x2: Math.max(x1, x2), src: p.id, fam: p.id });
+    } else if (Math.abs(x1 - x2) < eps) {
+      segs.push({ type: 'v', x: x1, y1: Math.min(y1, y2), y2: Math.max(y1, y2), src: p.id, fam: p.id });
+    }
+    if (p.el2) {
+      const cx1 = parseFloat(p.el2.getAttribute('x1')), cy1 = parseFloat(p.el2.getAttribute('y1'));
+      const cx2 = parseFloat(p.el2.getAttribute('x2')), cy2 = parseFloat(p.el2.getAttribute('y2'));
+      if (Math.abs(cy1 - cy2) < eps) {
+        segs.push({ type: 'h', y: cy1, x1: Math.min(cx1, cx2), x2: Math.max(cx1, cx2), src: p.id + '-c', fam: p.id });
+      } else if (Math.abs(cx1 - cx2) < eps) {
+        segs.push({ type: 'v', x: cx1, y1: Math.min(cy1, cy2), y2: Math.max(cy1, cy2), src: p.id + '-c', fam: p.id });
+      }
+    }
+  });
+
+  return segs;
+}
+
+// Find all H-V intersections between segments from DIFFERENT sources
+function findLineCrossings(segs) {
+  const hSegs = segs.filter(s => s.type === 'h');
+  const vSegs = segs.filter(s => s.type === 'v');
+  const crossings = [];
+  const hMargin = BRIDGE_RADIUS + 2; // prevent false positives at shared branch midpoints
+
+  for (const h of hSegs) {
+    for (const v of vSegs) {
+      if (h.src === v.src) continue; // same child link — skip
+      if (h.fam && v.fam && h.fam === v.fam) continue; // siblings from same family — skip
+      if (v.x > h.x1 + hMargin && v.x < h.x2 - hMargin &&
+          h.y >= v.y1 && h.y <= v.y2) {
+        crossings.push({ cx: v.x, cy: h.y, hSrc: h.src, vSrc: v.src });
+      }
+    }
+  }
+  return crossings;
+}
+
+// Rebuild a path d-string inserting bridge arcs at crossing points.
+// crossings: array of {cx, cy} — cx is matched to each vertical segment's X
+// so bridges only appear on the segment where the crossing actually occurs.
+function rebuildPathWithBridges(d, crossings) {
+  if (!crossings || crossings.length === 0) return d;
+  const pts = parsePathPoints(d);
+  if (pts.length < 2) return d;
+
+  const eps = 0.5;
+  const sameXY = (p, x, y) => Math.abs(p.x - x) < eps && Math.abs(p.y - y) < eps;
+  const isZeroSeg = (a, b) => Math.abs(a.x - b.x) < eps && Math.abs(a.y - b.y) < eps;
+  const isVerticalSeg = (a, b) => Math.abs(a.x - b.x) < eps && !isZeroSeg(a, b);
+  const isHorizontalSeg = (a, b) => Math.abs(a.y - b.y) < eps && !isZeroSeg(a, b);
+
+  function prevNonZeroSegment(segIndex) {
+    for (let j = segIndex - 1; j >= 0; j--) {
+      const a = pts[j], b = pts[j + 1];
+      if (isZeroSeg(a, b)) continue;
+      return { index: j, a, b, isV: isVerticalSeg(a, b), isH: isHorizontalSeg(a, b) };
+    }
+    return null;
+  }
+
+  function nextNonZeroSegment(segIndex) {
+    for (let j = segIndex + 1; j < pts.length - 1; j++) {
+      const a = pts[j], b = pts[j + 1];
+      if (isZeroSeg(a, b)) continue;
+      return { index: j, a, b, isV: isVerticalSeg(a, b), isH: isHorizontalSeg(a, b) };
+    }
+    return null;
+  }
+
+  function previousVerticalEndsHere(segIndex, x, y) {
+    const prev = prevNonZeroSegment(segIndex);
+    return !!(prev && prev.isV && sameXY(prev.b, x, y) && Math.abs(prev.a.x - x) < eps);
+  }
+
+  function followingVerticalStartsHere(segIndex, x, y) {
+    const next = nextNonZeroSegment(segIndex);
+    return !!(next && next.isV && sameXY(next.a, x, y) && Math.abs(next.b.x - x) < eps);
+  }
+
+  // If an external horizontal line sits exactly on this child link's branch Y,
+  // it may intersect both vertical stems at the two ends of the same horizontal
+  // branch. For a centred/straight child link the two verticals share one X and
+  // the incoming segment owns one full bridge. For an offset child link, keep
+  // both endpoint crossings but tag them as split halves: the trunk-side stem
+  // draws the upper half of the bridge, and the child-side stem draws the lower
+  // half. This avoids a double full-bridge while preserving the visual cue for
+  // which child descends from the branch.
+  function normaliseBranchEndpointCrossings(rawCrossings) {
+    const normalised = rawCrossings.map((c, idx) => ({ ...c, _idx: idx }));
+    const drop = new Set();
+
+    function sourceSet(c) {
+      if (Array.isArray(c.hSrcs) && c.hSrcs.length) return new Set(c.hSrcs);
+      if (c.hSrc) return new Set([c.hSrc]);
+      return new Set(['']);
+    }
+
+    function shareExternalLine(c1, c2) {
+      const s1 = sourceSet(c1), s2 = sourceSet(c2);
+      for (const src of s1) if (s2.has(src)) return true;
+      return false;
+    }
+
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1];
+      if (!isHorizontalSeg(a, b)) continue;
+      const y = a.y;
+      const leftX = Math.min(a.x, b.x), rightX = Math.max(a.x, b.x);
+      const firstCornerX = a.x;
+      const secondCornerX = b.x;
+      const offsetBranch = Math.abs(firstCornerX - secondCornerX) >= eps;
+
+      const atFirst = normalised.filter(c =>
+        Math.abs(c.cy - y) < eps && Math.abs(c.cx - firstCornerX) < 1 &&
+        c.cx >= leftX - eps && c.cx <= rightX + eps && !drop.has(c._idx)
+      );
+      const atSecond = normalised.filter(c =>
+        Math.abs(c.cy - y) < eps && Math.abs(c.cx - secondCornerX) < 1 &&
+        c.cx >= leftX - eps && c.cx <= rightX + eps && !drop.has(c._idx)
+      );
+
+      atFirst.forEach(c1 => {
+        atSecond.forEach(c2 => {
+          if (!shareExternalLine(c1, c2)) return;
+          if (offsetBranch) {
+            c1.branchBridgeHalf = 'upper';
+            c2.branchBridgeHalf = 'lower';
+          } else {
+            drop.add(c2._idx);
+          }
+        });
+      });
+    }
+
+    return normalised
+      .filter(c => !drop.has(c._idx))
+      .map(({ _idx, ...c }) => c);
+  }
+
+  crossings = normaliseBranchEndpointCrossings(crossings);
+
+  let out = `M ${pts[0].x} ${pts[0].y}`;
+
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1];
+    if (isZeroSeg(a, b)) continue;
+
+    const isV = isVerticalSeg(a, b);
+    if (!isV) {
+      out += ` L ${b.x} ${b.y}`;
+      continue;
+    }
+
+    const x = a.x;
+    const minY = Math.min(a.y, b.y), maxY = Math.max(a.y, b.y);
+    const goDown = b.y > a.y;
+
+    const rel = crossings
+      .filter(c => Math.abs(c.cx - x) < 1 && c.cy >= minY - eps && c.cy <= maxY + eps)
+      .map(c => ({
+        ...c,
+        cy: Math.max(minY, Math.min(c.cy, maxY)),
+        atStart: Math.abs(c.cy - a.y) < eps,
+        atEnd: Math.abs(c.cy - b.y) < eps
+      }))
+      .filter(c => {
+        // If two vertical segments meet at the same point, the incoming segment
+        // owns the bridge. This lets the incoming line stop at the arc boundary
+        // and the outgoing line continue from the far side of the same arc.
+        if (c.atStart && previousVerticalEndsHere(i, x, c.cy)) return false;
+        if (c.atStart || c.atEnd) return true;
+        return c.cy - BRIDGE_RADIUS > minY && c.cy + BRIDGE_RADIUS < maxY;
+      });
+
+    const unique = [];
+    rel.forEach(c => {
+      if (!unique.some(u => Math.abs(u.cy - c.cy) < eps && Math.abs(u.cx - c.cx) < eps)) unique.push(c);
+    });
+    unique.sort((p, q) => goDown ? p.cy - q.cy : q.cy - p.cy);
+
+    let skipFinalEndpointLine = false;
+    for (const c of unique) {
+      const cy = c.cy;
+      const arcStartY = goDown ? cy - BRIDGE_RADIUS : cy + BRIDGE_RADIUS;
+      const arcEndY = goDown ? cy + BRIDGE_RADIUS : cy - BRIDGE_RADIUS;
+      const continuesIntoNextVertical = c.atEnd && followingVerticalStartsHere(i, x, cy);
+      const sideX = x + BRIDGE_RADIUS;
+
+      // Offset branch point: split one logical bridge across the two vertical
+      // stems. The parent/trunk-side stem contributes only the upper half, and
+      // the child-side stem contributes only the lower half.
+      if (c.branchBridgeHalf === 'upper' && c.atEnd && goDown) {
+        out += ` L ${x} ${cy - BRIDGE_RADIUS}`;
+        out += ` A ${BRIDGE_RADIUS} ${BRIDGE_RADIUS} 0 0 1 ${sideX} ${cy}`;
+        out += ` M ${b.x} ${b.y}`;
+        continue;
+      }
+      if (c.branchBridgeHalf === 'lower' && c.atStart && goDown) {
+        out += ` M ${sideX} ${cy}`;
+        out += ` A ${BRIDGE_RADIUS} ${BRIDGE_RADIUS} 0 0 1 ${x} ${cy + BRIDGE_RADIUS}`;
+        continue;
+      }
+
+      if (c.atStart) {
+        // Do not draw a short reverse stub from the branch point back to the
+        // top of the bridge. Start a separate bridge subpath instead.
+        out += ` M ${x} ${arcStartY}`;
+      } else {
+        out += ` L ${x} ${arcStartY}`;
+      }
+
+      out += goDown
+        ? ` A ${BRIDGE_RADIUS} ${BRIDGE_RADIUS} 0 0 1 ${x} ${arcEndY}`
+        : ` A ${BRIDGE_RADIUS} ${BRIDGE_RADIUS} 0 0 0 ${x} ${arcEndY}`;
+
+      if (c.atEnd && continuesIntoNextVertical) {
+        // Straight-through branch point: leave the SVG cursor at the far side
+        // of the arc so the following vertical segment continues from there.
+        // Crucially, do not draw back to the branch point through the bridge.
+        skipFinalEndpointLine = true;
+      } else if (c.atEnd) {
+        // Corner into a horizontal branch: restore the logical cursor to the
+        // corner for the horizontal segment without drawing a vertical stroke
+        // through the bridge.
+        out += ` M ${b.x} ${b.y}`;
+      }
+    }
+
+    if (!skipFinalEndpointLine) out += ` L ${b.x} ${b.y}`;
+  }
+
+  return out;
+}
+
+// Build a bridge overlay d-string for a vertical line element (rare — partnerships are usually horizontal)
+function buildLineBridgeD(x1, y1, x2, y2, crossingYs) {
+  if (!crossingYs || crossingYs.length === 0) return '';
+  const x = x1;
+  const minY = Math.min(y1, y2), maxY = Math.max(y1, y2);
+  const rel = crossingYs.filter(cy => cy > minY + BRIDGE_RADIUS + 1 && cy < maxY - BRIDGE_RADIUS - 1);
+  if (rel.length === 0) return '';
+  rel.sort((a, b) => a - b);
+  let d = '';
+  for (const cy of rel) {
+    d += `M ${x} ${cy - BRIDGE_RADIUS} A ${BRIDGE_RADIUS} ${BRIDGE_RADIUS} 0 0 1 ${x} ${cy + BRIDGE_RADIUS} `;
+  }
+  return d.trim();
+}
+
+// Merge crossing points that are close in Y and at the same X (e.g. double
+// consanguineous lines ~4px apart) into a single bridge at their midpoint
+function mergeNearbyCrossings(crossings) {
+  if (crossings.length <= 1) return crossings;
+  crossings.sort((a, b) => a.cy - b.cy);
+  const merged = [];
+  let i = 0;
+  while (i < crossings.length) {
+    let j = i;
+    while (j + 1 < crossings.length &&
+           crossings[j + 1].cy - crossings[i].cy <= BRIDGE_RADIUS &&
+           Math.abs(crossings[j + 1].cx - crossings[i].cx) < 1) j++;
+    const hSrcs = [];
+    for (let k = i; k <= j; k++) {
+      if (Array.isArray(crossings[k].hSrcs)) {
+        crossings[k].hSrcs.forEach(src => { if (!hSrcs.includes(src)) hSrcs.push(src); });
+      } else if (crossings[k].hSrc && !hSrcs.includes(crossings[k].hSrc)) {
+        hSrcs.push(crossings[k].hSrc);
+      }
+    }
+    merged.push({
+      cx: crossings[i].cx,
+      cy: (crossings[i].cy + crossings[j].cy) / 2,
+      hSrc: hSrcs[0],
+      hSrcs
+    });
+    i = j + 1;
+  }
+  return merged;
+}
+
+// Master function: detect all crossings and apply bridge arcs to DOM
+function applyLineCrossings() {
+  const segs = collectAllSegments();
+  const crossings = findLineCrossings(segs);
+
+  // Group crossings by VERTICAL source as {cx, cy} pairs
+  const byVSrc = new Map();
+  crossings.forEach(c => {
+    if (!byVSrc.has(c.vSrc)) byVSrc.set(c.vSrc, []);
+    byVSrc.get(c.vSrc).push({ cx: c.cx, cy: c.cy, hSrc: c.hSrc });
+  });
+  // Merge nearby crossings (e.g. consanguineous double lines)
+  byVSrc.forEach((pts, key) => byVSrc.set(key, mergeNearbyCrossings(pts)));
+
+  // Apply bridges to child link paths (vertical segments)
+  childLinks.forEach(cl => {
+    const pts = byVSrc.get(cl.id);
+    if (pts && pts.length > 0) {
+      const cleanD = cl.els[0].getAttribute('d');
+      const bridgedD = rebuildPathWithBridges(cleanD, pts);
+      cl.els[0].setAttribute('d', bridgedD);
+      cl.els[1].setAttribute('d', bridgedD);
+    }
+  });
+
+  // Apply bridge overlays to partnership lines (only fires for vertical partnerships)
+  const svg = document.getElementById('lines-layer');
+  partnerships.forEach(p => {
+    const pts = byVSrc.get(p.id);
+    if (pts && pts.length > 0) {
+      const x1 = parseFloat(p.el.getAttribute('x1')), y1 = parseFloat(p.el.getAttribute('y1'));
+      const x2 = parseFloat(p.el.getAttribute('x2')), y2 = parseFloat(p.el.getAttribute('y2'));
+      const d = buildLineBridgeD(x1, y1, x2, y2, pts.map(c => c.cy));
+      if (d) {
+        if (!p.bridgeMask) {
+          p.bridgeMask = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+          p.bridgeMask.setAttribute('stroke', '#ffffff');
+          p.bridgeMask.setAttribute('stroke-width', String(STROKE_W + 4));
+          p.bridgeMask.setAttribute('fill', 'none');
+          p.bridgeMask.style.pointerEvents = 'none';
+          svg.appendChild(p.bridgeMask);
+          p.bridgeArc = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+          p.bridgeArc.setAttribute('stroke', STROKE_COLOR);
+          p.bridgeArc.setAttribute('stroke-width', String(STROKE_W));
+          p.bridgeArc.setAttribute('fill', 'none');
+          p.bridgeArc.style.pointerEvents = 'none';
+          svg.appendChild(p.bridgeArc);
+        }
+        p.bridgeMask.setAttribute('d', d);
+        p.bridgeArc.setAttribute('d', d);
+        p.bridgeMask.style.display = '';
+        p.bridgeArc.style.display = '';
+      } else {
+        if (p.bridgeMask) { p.bridgeMask.style.display = 'none'; p.bridgeArc.style.display = 'none'; }
+      }
+    } else {
+      if (p.bridgeMask) { p.bridgeMask.style.display = 'none'; p.bridgeArc.style.display = 'none'; }
+    }
+
+    // Consanguineous second line
+    const pts2 = byVSrc.get(p.id + '-c');
+    if (pts2 && pts2.length > 0 && p.el2) {
+      const x1 = parseFloat(p.el2.getAttribute('x1')), y1 = parseFloat(p.el2.getAttribute('y1'));
+      const x2 = parseFloat(p.el2.getAttribute('x2')), y2 = parseFloat(p.el2.getAttribute('y2'));
+      const d = buildLineBridgeD(x1, y1, x2, y2, pts2.map(c => c.cy));
+      if (d) {
+        if (!p.bridgeMask2) {
+          p.bridgeMask2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+          p.bridgeMask2.setAttribute('stroke', '#ffffff');
+          p.bridgeMask2.setAttribute('stroke-width', String(STROKE_W + 4));
+          p.bridgeMask2.setAttribute('fill', 'none');
+          p.bridgeMask2.style.pointerEvents = 'none';
+          svg.appendChild(p.bridgeMask2);
+          p.bridgeArc2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+          p.bridgeArc2.setAttribute('stroke', STROKE_COLOR);
+          p.bridgeArc2.setAttribute('stroke-width', String(STROKE_W));
+          p.bridgeArc2.setAttribute('fill', 'none');
+          p.bridgeArc2.style.pointerEvents = 'none';
+          svg.appendChild(p.bridgeArc2);
+        }
+        p.bridgeMask2.setAttribute('d', d);
+        p.bridgeArc2.setAttribute('d', d);
+        p.bridgeMask2.style.display = '';
+        p.bridgeArc2.style.display = '';
+      } else {
+        if (p.bridgeMask2) { p.bridgeMask2.style.display = 'none'; p.bridgeArc2.style.display = 'none'; }
+      }
+    } else {
+      if (p.bridgeMask2) { p.bridgeMask2.style.display = 'none'; p.bridgeArc2.style.display = 'none'; }
+    }
+  });
+}
+
+function updateAllConnections() {
+  partnerships.forEach(p => updatePartnershipPos(p));
+  childLinks.forEach(c => updateChildLinkPos(c));
+  twinLinks.forEach(t => updateTwinLinkPos(t));
+  applyLineCrossings();
+  updateLinkDeleteBtnPos();
+}
+
+// Throttled version for use during drags — collapses multiple per-frame
+// pointer-move events into a single rAF callback, preventing layout thrash
+// on large pedigrees (50+ persons).
+let _connRafId = 0;
+function scheduleConnectionUpdate() {
+  if (!_connRafId) {
+    _connRafId = requestAnimationFrame(() => {
+      _connRafId = 0;
+      updateAllConnections();
+    });
+  }
+}
+// Cancel any pending rAF (call on drag end so the final synchronous
+// updateAllConnections in alignConnectedPersons isn't stale).
+function flushConnectionUpdate() {
+  if (_connRafId) { cancelAnimationFrame(_connRafId); _connRafId = 0; }
+}
+
+// ══════════════════════
+// AUTO-ALIGN CONNECTED
+// ══════════════════════
+
+function partnershipHasChildren(partnershipId) {
+  return childLinks.some(cl => cl.partnershipId === partnershipId);
+}
+
+function alignOrdinaryPartnersToMovedPerson(movedPersonId, targetY) {
+  // Individual Move post-drag repair for ordinary/separated partnerships.
+  // The generic alignConnectedPersons() uses the leftmost partner as the Y
+  // reference. In Individual Move mode, the actively dragged person should be
+  // the user's explicit Y reference whether the partnership has children or not.
+  // Therefore run this after alignConnectedPersons() and re-snap every ordinary
+  // partner of the moved person to the moved person's final Y. Protected internal
+  // relationship lines (consanguinity/shared-partner variants) are skipped
+  // because they are relationship lines, not same-row spouse blocks.
+  const moved = persons.get(movedPersonId);
+  if (!moved || moved.noSnap || !Number.isFinite(targetY)) return;
+
+  partnerships.forEach(ps => {
+    if (ps.fromId !== movedPersonId && ps.toId !== movedPersonId) return;
+    if (isProtectedInternalPartnership(ps)) return;
+
+    const otherId = ps.fromId === movedPersonId ? ps.toId : ps.fromId;
+    const other = persons.get(otherId);
+    if (!other) return;
+
+    moved.el.style.top = targetY + 'px';
+    moved.y = targetY;
+    if (!other.noSnap) {
+      other.el.style.top = targetY + 'px';
+      other.y = targetY;
+    }
+  });
+}
+
+function alignConnectedPersons() {
+  // 1. Align partners: both partners in a partnership snap to leftmost partner's Y
+  partnerships.forEach(ps => {
+    // Consanguineous partnerships are cross-branch relationship lines, not
+    // ordinary adjacent partner units.  Auto-aligning their Y coordinate can
+    // unexpectedly move established cousin/descendant branches.
+    if (isProtectedInternalPartnership(ps)) return;
+    const p1 = persons.get(ps.fromId), p2 = persons.get(ps.toId);
+    if (!p1 || !p2) return;
+    // If both are noSnap, skip entirely
+    if (p1.noSnap && p2.noSnap) return;
+    const x1 = parseFloat(p1.el.style.left), x2 = parseFloat(p2.el.style.left);
+    // Determine reference: prefer the non-noSnap person; if both snappable, use leftmost
+    let refPerson, otherPerson;
+    if (p1.noSnap) { refPerson = p2; otherPerson = p1; }
+    else if (p2.noSnap) { refPerson = p1; otherPerson = p2; }
+    else { refPerson = x1 <= x2 ? p1 : p2; otherPerson = x1 <= x2 ? p2 : p1; }
+    if (otherPerson.noSnap) return; // don't move free-positioned person
+    const targetY = parseFloat(refPerson.el.style.top);
+    otherPerson.el.style.top = targetY + 'px';
+    otherPerson.y = targetY;
+  });
+
+  // 2. Align siblings: children of the same partnership snap to leftmost sibling's Y
+  const childrenByPartnership = {};
+  childLinks.forEach(cl => {
+    if (!childrenByPartnership[cl.partnershipId]) childrenByPartnership[cl.partnershipId] = [];
+    childrenByPartnership[cl.partnershipId].push(cl.childId);
+  });
+  Object.values(childrenByPartnership).forEach(childIds => {
+    if (childIds.length < 2) return;
+    // Find leftmost snappable child for reference Y
+    let leftmostX = Infinity, targetY = 0, hasRef = false;
+    childIds.forEach(cid => {
+      const p = persons.get(cid);
+      if (!p || p.noSnap) return; // ignore free-positioned children as reference
+      const x = parseFloat(p.el.style.left);
+      if (x < leftmostX) { leftmostX = x; targetY = parseFloat(p.el.style.top); hasRef = true; }
+    });
+    if (!hasRef) return; // all children are noSnap, nothing to align
+    // Snap only non-noSnap siblings to that Y
+    childIds.forEach(cid => {
+      const p = persons.get(cid);
+      if (!p || p.noSnap) return;
+      p.el.style.top = targetY + 'px';
+      p.y = targetY;
+    });
+  });
+
+  updateAllConnections();
+  updateNumbering();
+}
+
+// ══════════════════════
+// TWIN LINKS
+// ══════════════════════
+
+function startTwinConnect(id) {
+  if (!twinSource) {
+    twinSource = id;
+    persons.get(id)?.el.classList.add('selected');
+    document.getElementById('statusBar').textContent = 'Now click the second twin';
+  } else if (twinSource !== id) {
+    addTwinLink(twinSource, id, currentTwinType);
+    document.querySelectorAll('.person.selected').forEach(el => el.classList.remove('selected'));
+    twinSource = null;
+    setTool('move');
+  }
+}
+
+function addTwinLink(child1Id, child2Id, type, customId) {
+  if (!customId) pushUndo();
+  // Find shared partnership
+  const c1Links = childLinks.filter(cl => cl.childId === child1Id);
+  const c2Links = childLinks.filter(cl => cl.childId === child2Id);
+  let sharedPship = null;
+  for (const l1 of c1Links) for (const l2 of c2Links) {
+    if (l1.partnershipId === l2.partnershipId) { sharedPship = l1.partnershipId; break; }
+  }
+  if (!sharedPship) { document.getElementById('statusBar').textContent = 'Children must share a partnership'; return; }
+  if (twinLinks.some(t => (t.child1Id === child1Id && t.child2Id === child2Id) || (t.child1Id === child2Id && t.child2Id === child1Id))) return;
+
+  const id = customId || 'twin-' + (++lineIdCounter);
+  const svg = document.getElementById('lines-layer');
+
+  // Path for the vertical drop + optional bar
+  const twinPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  twinPath.setAttribute('stroke', '#1a2332');
+  twinPath.setAttribute('stroke-width', '2');
+  twinPath.setAttribute('fill', 'none');
+  twinPath.style.pointerEvents = 'stroke';
+  twinPath.style.cursor = 'pointer';
+  twinPath.id = id;
+
+  const onClick = () => { if (currentTool === 'move') if (confirm('Remove twin link?')) removeTwinLink(id); };
+  twinPath.addEventListener('click', onClick);
+
+  svg.appendChild(twinPath);
+  const tl = { id, child1Id, child2Id, type: type || 'identical', partnershipId: sharedPship, els: [twinPath] };
+  twinLinks.push(tl);
+  updateTwinLinkPos(tl);
+  // Re-render the child links for both twins to show diagonal paths
+  childLinks.filter(cl => cl.childId === child1Id || cl.childId === child2Id).forEach(cl => updateChildLinkPos(cl));
+  updateNumbering();
+  scheduleSave();
+  document.getElementById('statusBar').textContent = (type === 'identical' ? 'Identical' : 'Non-identical') + ' twins linked!';
+}
+
+function removeTwinLink(id) {
+  pushUndo();
+  const idx = twinLinks.findIndex(t => t.id === id);
+  if (idx === -1) return;
+  const tl = twinLinks[idx];
+  tl.els.forEach(el => el.remove());
+  twinLinks.splice(idx, 1);
+  // Refresh the child links to revert to normal right-angle paths
+  childLinks.filter(cl => cl.childId === tl.child1Id || cl.childId === tl.child2Id).forEach(cl => updateChildLinkPos(cl));
+  updateNumbering();
+  scheduleSave();
+}
+
+function updateTwinLinkPos(tl) {
+  const c1 = persons.get(tl.child1Id), c2 = persons.get(tl.child2Id);
+  if (!c1 || !c2) return;
+  const pship = partnerships.find(p => p.id === tl.partnershipId);
+  if (!pship) return;
+  const fp = persons.get(pship.fromId), tp = persons.get(pship.toId);
+  if (!fp || !tp) return;
+  const fc = getPersonCenter(fp), tc = getPersonCenter(tp);
+  const midY = (fc.y + tc.y) / 2;
+  const cc1 = getPersonCenter(c1), cc2 = getPersonCenter(c2);
+  const c1Top = parseFloat(c1.el.style.top), c2Top = parseFloat(c2.el.style.top);
+  const forkX = (cc1.x + cc2.x) / 2;
+  const branchY = Math.max(midY + 4, (c1Top + c2Top) / 2 - SHAPE_HALF);
+
+  tl.els[0].setAttribute('d', computeTwinBarD(tl.type, forkX, branchY, cc1.x, cc2.x, c1Top, c2Top));
+}
+
+// ══════════════════════
+// CONNECTED GROUPS
+// ══════════════════════
+
+function getConnectedGroup(startId) {
+  const visited = new Set();
+  const queue = [startId];
+  while (queue.length) {
+    const id = queue.shift();
+    if (visited.has(id)) continue;
+    visited.add(id);
+    partnerships.forEach(p => {
+      if (p.fromId === id && !visited.has(p.toId)) queue.push(p.toId);
+      if (p.toId === id && !visited.has(p.fromId)) queue.push(p.fromId);
+      if (p.fromId === id || p.toId === id) {
+        childLinks.forEach(cl => { if (cl.partnershipId === p.id && !visited.has(cl.childId)) queue.push(cl.childId); });
+      }
+    });
+    childLinks.forEach(cl => {
+      if (cl.childId === id) {
+        const ps = partnerships.find(p => p.id === cl.partnershipId);
+        if (ps) { if (!visited.has(ps.fromId)) queue.push(ps.fromId); if (!visited.has(ps.toId)) queue.push(ps.toId); }
+      }
+    });
+  }
+  return visited;
+}
+
+function getConnectedGroupExcludingPartnership(startId, excludePartnershipId) {
+  // Same graph walk as getConnectedGroup(), but with one partnership and its
+  // child links removed. This lets us ask: "were these two people already
+  // connected before this partnership existed?" If yes, the line is an
+  // internal/consanguineous relationship for default-layout purposes.
+  const visited = new Set();
+  const queue = [startId];
+  while (queue.length) {
+    const id = queue.shift();
+    if (visited.has(id) || !persons.has(id)) continue;
+    visited.add(id);
+    partnerships.forEach(p => {
+      if (p.id === excludePartnershipId) return;
+      if (p.fromId === id && !visited.has(p.toId)) queue.push(p.toId);
+      if (p.toId === id && !visited.has(p.fromId)) queue.push(p.fromId);
+      if (p.fromId === id || p.toId === id) {
+        childLinks.forEach(cl => {
+          if (cl.partnershipId === excludePartnershipId) return;
+          if (cl.partnershipId === p.id && !visited.has(cl.childId)) queue.push(cl.childId);
+        });
+      }
+    });
+    childLinks.forEach(cl => {
+      if (cl.partnershipId === excludePartnershipId) return;
+      if (cl.childId === id) {
+        const ps = partnerships.find(p => p.id === cl.partnershipId);
+        if (ps && ps.id !== excludePartnershipId) {
+          if (!visited.has(ps.fromId)) queue.push(ps.fromId);
+          if (!visited.has(ps.toId)) queue.push(ps.toId);
+        }
+      }
+    });
+  }
+  return visited;
+}
+
+function areAlreadyRelatedForPartnership(fromId, toId, excludePartnershipId) {
+  if (!persons.has(fromId) || !persons.has(toId)) return false;
+  if (fromId === toId) return false;
+  return getConnectedGroupExcludingPartnership(fromId, excludePartnershipId || null).has(toId);
+}
+
+function getParentIdsForPerson(personId) {
+  const out = [];
+  childLinks.forEach(cl => {
+    if (cl.childId !== personId) return;
+    const ps = partnerships.find(p => p.id === cl.partnershipId);
+    if (!ps) return;
+    if (persons.has(ps.fromId) && ps.fromId !== personId) out.push(ps.fromId);
+    if (persons.has(ps.toId) && ps.toId !== personId) out.push(ps.toId);
+  });
+  return out;
+}
+
+function getAncestorIdsForPerson(personId) {
+  // Upward-only parent traversal. This is deliberately not the same as
+  // getConnectedGroup(): spouses/partners are not traversed, and a co-parent
+  // is not treated as a blood relative merely because they share a child.
+  const out = new Set();
+  const queue = getParentIdsForPerson(personId);
+  while (queue.length) {
+    const id = queue.shift();
+    if (out.has(id) || !persons.has(id)) continue;
+    out.add(id);
+    getParentIdsForPerson(id).forEach(pid => { if (!out.has(pid)) queue.push(pid); });
+  }
+  return out;
+}
+
+function areConsanguineouslyRelatedForPartnership(fromId, toId) {
+  if (!persons.has(fromId) || !persons.has(toId) || fromId === toId) return false;
+  const fromAncestors = getAncestorIdsForPerson(fromId);
+  const toAncestors = getAncestorIdsForPerson(toId);
+  if (fromAncestors.has(toId) || toAncestors.has(fromId)) return true;
+  for (const id of fromAncestors) if (toAncestors.has(id)) return true;
+  return false;
+}
+
+function canonicalPartnershipType(fromId, toId, requestedType, excludePartnershipId) {
+  // v11 distinguishes protected layout semantics from the visible line style.
+  //
+  // 1. True consanguinity: the partners share an ancestor, or one is an
+  //    ancestor/descendant of the other. These are stored as either
+  //    'consanguineous' or 'consanguineous-separated'. Both use protected
+  //    layout mechanics and render as double lines; the separated variant also
+  //    draws separation slashes.
+  // 2. Shared-partner / affinal loops: the endpoints are already connected
+  //    elsewhere in the pedigree, but not through a blood/ancestor path. The
+  //    common example is two cousins sharing the same partner. These are stored
+  //    as either 'shared-partner' or 'shared-partner-separated'. Both use the
+  //    same protected layout mechanics as consanguinity, but they render as
+  //    normal-looking single lines (with slashes for the separated variant).
+  const requested = requestedType || 'normal';
+  const wantsSeparated = requestedTypeWantsSeparated(requested);
+  if (areConsanguineouslyRelatedForPartnership(fromId, toId)) {
+    return wantsSeparated ? 'consanguineous-separated' : 'consanguineous';
+  }
+  if (areAlreadyRelatedForPartnership(fromId, toId, excludePartnershipId)) {
+    return wantsSeparated ? 'shared-partner-separated' : 'shared-partner';
+  }
+  // Internal shared-partner types are only valid for already-connected
+  // affinal loops. If an imported/free-standing link has one, reduce it to the
+  // visible ordinary type that matches its line style.
+  if (requested === 'shared-partner') return 'normal';
+  if (requested === 'shared-partner-separated') return 'separated';
+  return requested;
+}
+
+function isProtectedInternalPartnership(ps) {
+  if (!ps) return false;
+  return isProtectedInternalPartnershipType(ps.type) ||
+         areAlreadyRelatedForPartnership(ps.fromId, ps.toId, ps.id);
+}
+
+function setPartnershipVisualType(ps, type) {
+  if (!ps) return false;
+  type = canonicalPartnershipType(ps.fromId, ps.toId, type || ps.type || 'normal', ps.id);
+  const oldType = ps.type || 'normal';
+  const svg = document.getElementById('lines-layer');
+  ps.type = type;
+
+  if (ps.el2) { ps.el2.remove(); ps.el2 = null; }
+  if (ps.slash) { ps.slash.forEach(s => s.remove()); ps.slash = null; }
+
+  if (isConsanguineousPartnershipType(type)) {
+    const l2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    l2.setAttribute('stroke', STROKE_COLOR);
+    l2.setAttribute('stroke-width', STROKE_W);
+    l2.style.pointerEvents = 'none';
+    svg.appendChild(l2);
+    ps.el2 = l2;
+  }
+
+  updatePartnershipPos(ps);
+  return oldType !== type;
+}
+
+function normalizeRelatedPartnershipTypes() {
+  // Upgrade or correct older/session-imported internal relationship lines.
+  // True blood relationships become consanguineous variants; shared-partner/affinal
+  // loops become shared-partner variants. This is intentionally run before saving, after
+  // loading, and before default construction operations.
+  let changed = false;
+  partnerships.forEach(ps => {
+    const finalType = canonicalPartnershipType(ps.fromId, ps.toId, ps.type || 'normal', ps.id);
+    if ((ps.type || 'normal') !== finalType) {
+      if (setPartnershipVisualType(ps, finalType)) changed = true;
+    }
+  });
+  return changed;
+}
+
+// Like getConnectedGroup but skips one specific partnership (used to find a child's own subtree
+// without traversing back up through the parent partnership that connects them to the sibling row)
+function getSubtree(startId, excludePartnershipId) {
+  const visited = new Set();
+  const queue = [startId];
+  while (queue.length) {
+    const id = queue.shift();
+    if (visited.has(id)) continue;
+    visited.add(id);
+    partnerships.forEach(p => {
+      if (p.id === excludePartnershipId) return;
+      if (p.fromId === id && !visited.has(p.toId)) queue.push(p.toId);
+      if (p.toId === id && !visited.has(p.fromId)) queue.push(p.fromId);
+      if (p.fromId === id || p.toId === id) {
+        childLinks.forEach(cl => { if (cl.partnershipId === p.id && !visited.has(cl.childId)) queue.push(cl.childId); });
+      }
+    });
+    childLinks.forEach(cl => {
+      if (cl.childId === id) {
+        if (cl.partnershipId === excludePartnershipId) return;
+        const ps = partnerships.find(p => p.id === cl.partnershipId);
+        if (ps) { if (!visited.has(ps.fromId)) queue.push(ps.fromId); if (!visited.has(ps.toId)) queue.push(ps.toId); }
+      }
+    });
+  }
+  return visited;
+}
+
+// ══════════════════════
+// DRAG SYSTEM
+// ══════════════════════
+
+function startDrag(personId, e) {
+  pushUndo();
+  const pos = getPointerPos(e);
+  let dragIds;
+  if (multiSelected.size > 0 && multiSelected.has(personId)) dragIds = new Set(multiSelected);
+  else if (individualMoveMode) dragIds = new Set([personId]);
+  else dragIds = getConnectedGroup(personId);
+
+  const origins = new Map();
+  dragIds.forEach(id => {
+    const p = persons.get(id);
+    if (p) { origins.set(id, { x: parseFloat(p.el.style.left), y: parseFloat(p.el.style.top) }); p.el.classList.add('dragging'); }
+  });
+  dragState = { personId, dragIds, origins, startX: pos.clientX, startY: pos.clientY };
+
+  // Individual move mode: compute parent floor and descendants for the dragged person
+  if (individualMoveMode && dragIds.size === 1) {
+    // Parent floor: find all parents of this person and get the lowest bottom
+    const parentFloor = getParentFloor(personId);
+    if (parentFloor !== null) dragState.parentFloor = parentFloor;
+
+    // Descendants: everything reachable going only downward (children, their partners, their children, etc.)
+    // Skip descendant push for noSnap (free-positioned) persons — they move independently
+    const draggedPerson = persons.get(personId);
+    const descendants = (draggedPerson && draggedPerson.noSnap) ? new Set() : getDescendantsWithPartners(personId);
+    if (descendants.size > 0) {
+      const descOrigins = new Map();
+      descendants.forEach(id => {
+        const p = persons.get(id);
+        if (p) descOrigins.set(id, { x: parseFloat(p.el.style.left), y: parseFloat(p.el.style.top) });
+      });
+      dragState.descendants = descendants;
+      dragState.descOrigins = descOrigins;
+    }
+  }
+}
+
+function getPersonBottom(personId) {
+  const p = persons.get(personId);
+  if (!p) return 0;
+  const py = parseFloat(p.el.style.top);
+  let bottom = py + SHAPE_SIZE;
+  // Check text annotation height
+  const textEl = p.el.querySelector('.person-text');
+  if (textEl && p.text) {
+    const textBottom = py + 56 + textEl.offsetHeight;
+    if (textBottom > bottom) bottom = textBottom;
+  }
+  // Check miscarriage sex label
+  const msEl = p.el.querySelector('.miscarriage-sex');
+  if (msEl && msEl.textContent) {
+    const msBottom = py + 56 + msEl.offsetHeight;
+    if (msBottom > bottom) bottom = msBottom;
+  }
+  return bottom;
+}
+
+function getParentFloor(personId) {
+  let maxBottom = null;
+  childLinks.forEach(cl => {
+    if (cl.childId !== personId) return;
+    const pship = partnerships.find(p => p.id === cl.partnershipId);
+    if (!pship) return;
+    const b1 = getPersonBottom(pship.fromId);
+    const b2 = getPersonBottom(pship.toId);
+    const parentBottom = Math.max(b1, b2);
+    if (maxBottom === null || parentBottom > maxBottom) maxBottom = parentBottom;
+  });
+  return maxBottom;
+}
+
+function getDescendantsWithPartners(startId) {
+  // Traverse downward: from startId find children of their partnerships,
+  // then from each child include their partners and continue to their children, etc.
+  // Does NOT include startId's own partners (they're on the same row, not below).
+  const visited = new Set();
+  // First pass: find direct children of startId's partnerships
+  const firstChildren = [];
+  partnerships.forEach(ps => {
+    if (ps.fromId === startId || ps.toId === startId) {
+      childLinks.forEach(cl => {
+        if (cl.partnershipId === ps.id) firstChildren.push(cl.childId);
+      });
+    }
+  });
+  // BFS from children onward, including their partners
+  const queue = [...firstChildren];
+  while (queue.length) {
+    const id = queue.shift();
+    if (visited.has(id)) continue;
+    visited.add(id);
+    partnerships.forEach(ps => {
+      if (ps.fromId === id || ps.toId === id) {
+        // Add partner
+        const partnerId = ps.fromId === id ? ps.toId : ps.fromId;
+        if (!visited.has(partnerId) && partnerId !== startId) queue.push(partnerId);
+        // Add children
+        childLinks.forEach(cl => {
+          if (cl.partnershipId === ps.id && !visited.has(cl.childId)) queue.push(cl.childId);
+        });
+      }
+    });
+  }
+  return visited;
+}
+
+function onPointerMove(e) {
+  // Draw stroke
+  if (drawState) {
+    if (e.touches && e.touches.length > 1) {
+      // Multi-touch started — finalize current stroke and let pinch-zoom take over
+      if (drawState.points.length >= 2) {
+        drawStrokes.push({ points: drawState.points, color: drawState.color, width: drawState.width, el: drawState.el });
+      } else if (drawState.el && drawState.el.parentNode) {
+        drawState.el.parentNode.removeChild(drawState.el);
+      }
+      drawState = null;
+      scheduleSave();
+      return;
+    }
+    if (e.cancelable) e.preventDefault();
+    const pos = getPointerPos(e);
+    const canvas = document.getElementById('canvas');
+    const r = canvas.getBoundingClientRect();
+    const x = (pos.clientX - r.left) / zoomLevel;
+    const y = (pos.clientY - r.top) / zoomLevel;
+    drawState.points.push({ x, y });
+    drawState.el.setAttribute('d', buildStrokePathD(drawState.points));
+    return;
+  }
+  // Label drag
+  if (labelDragState) {
+    if (e.cancelable) e.preventDefault();
+    const pos = getPointerPos(e);
+    const dx = (pos.clientX - labelDragState.startX) / zoomLevel;
+    const dy = (pos.clientY - labelDragState.startY) / zoomLevel;
+    labelDragState.el.style.left = (labelDragState.origLeft + dx) + 'px';
+    labelDragState.el.style.top = (labelDragState.origTop + dy) + 'px';
+    return;
+  }
+  // Legend box drag
+  if (legendDragState) {
+    if (e.cancelable) e.preventDefault();
+    const pos = getPointerPos(e);
+    const dx = (pos.clientX - legendDragState.startX) / zoomLevel;
+    const dy = (pos.clientY - legendDragState.startY) / zoomLevel;
+    legendDragState.el.style.left = (legendDragState.origLeft + dx) + 'px';
+    legendDragState.el.style.top = (legendDragState.origTop + dy) + 'px';
+    return;
+  }
+  // Canvas pan
+  if (panState) {
+    if (e.cancelable) e.preventDefault();
+    const pos = getPointerPos(e);
+    panX = panState.origPanX + (pos.clientX - panState.startX);
+    panY = panState.origPanY + (pos.clientY - panState.startY);
+    applyTransform();
+    return;
+  }
+  // Person drag
+  if (!dragState) return;
+  if (e.cancelable) e.preventDefault();
+  const pos = getPointerPos(e);
+  const dx = (pos.clientX - dragState.startX) / zoomLevel;
+  let dy = (pos.clientY - dragState.startY) / zoomLevel;
+
+  // Individual move mode: enforce parent floor constraint
+  if (individualMoveMode && dragState.parentFloor !== undefined) {
+    const orig = dragState.origins.get(dragState.personId);
+    if (orig) {
+      const minY = dragState.parentFloor;
+      if (orig.y + dy < minY) dy = minY - orig.y;
+    }
+  }
+
+  dragState.dragIds.forEach(id => {
+    const p = persons.get(id);
+    const orig = dragState.origins.get(id);
+    if (p && orig) { p.el.style.left = (orig.x + dx) + 'px'; p.el.style.top = (orig.y + dy) + 'px'; }
+  });
+
+  // Individual move mode: keep descendants vertically attached to the dragged person.
+  // Earlier versions used Math.max(0, dy), so descendants were pushed down when a
+  // person moved downward but were left behind when that person moved upward.
+  // Use the actual clamped drag delta instead: moving up now pulls the same
+  // downstream descendant/partner set up, preserving branch spacing in both
+  // directions while still respecting the parent-floor constraint above.
+  if (individualMoveMode && dragState.descendants && dragState.descOrigins) {
+    dragState.descendants.forEach(id => {
+      const p = persons.get(id);
+      const orig = dragState.descOrigins.get(id);
+      if (p && orig) {
+        p.el.style.top = (orig.y + dy) + 'px';
+      }
+    });
+  }
+
+  scheduleConnectionUpdate();
+}
+
+function onPointerUp(e) {
+  if (drawState) {
+    if (drawState.points.length >= 2) {
+      drawStrokes.push({ points: drawState.points, color: drawState.color, width: drawState.width, el: drawState.el });
+    } else {
+      // Single point click — remove the SVG element
+      if (drawState.el && drawState.el.parentNode) drawState.el.parentNode.removeChild(drawState.el);
+    }
+    drawState = null;
+    scheduleSave();
+    return;
+  }
+  if (labelDragState) { labelDragState.el.classList.remove('dragging'); labelDragState = null; scheduleSave(); return; }
+  if (legendDragState) {
+    legendDragState.el.classList.remove('dragging');
+    legendX = parseFloat(legendDragState.el.style.left);
+    legendY = parseFloat(legendDragState.el.style.top);
+    legendDragState = null;
+    scheduleSave();
+    return;
+  }
+  if (panState) { panState = null; return; }
+  if (dragState) {
+    flushConnectionUpdate(); // cancel any pending rAF so alignment sees final positions
+    dragState.dragIds.forEach(id => {
+      const p = persons.get(id);
+      if (p) { p.el.classList.remove('dragging'); p.x = parseFloat(p.el.style.left); p.y = parseFloat(p.el.style.top); }
+    });
+    // Save descendant positions if they were moved
+    if (dragState.descendants) {
+      dragState.descendants.forEach(id => {
+        const p = persons.get(id);
+        if (p) { p.x = parseFloat(p.el.style.left); p.y = parseFloat(p.el.style.top); }
+      });
+    }
+    const wasIndividualSingleDrag = individualMoveMode && dragState.dragIds.size === 1;
+    const movedPersonId = dragState.personId;
+    const movedPerson = persons.get(movedPersonId);
+    const movedPersonFinalY = movedPerson ? parseFloat(movedPerson.el.style.top) : NaN;
+    const wasDefaultGroupDrag = !individualMoveMode;
+    const finalDragIds = new Set(dragState.dragIds);
+    const finalOrigins = new Map(dragState.origins);
+    dragState = null;
+    alignConnectedPersons();
+    if (wasIndividualSingleDrag) {
+      alignOrdinaryPartnersToMovedPerson(movedPersonId, movedPersonFinalY);
+      updateAllConnections();
+    }
+    if (wasDefaultGroupDrag) {
+      protectDraggedGroupFromOverlap(finalDragIds, finalOrigins);
+      updateAllConnections();
+    }
+    updateNumbering();
+    updateTextWrapping();
+    expandCanvasIfNeeded();
+    scheduleSave();
+  }
+}
+
+document.addEventListener('mousemove', onPointerMove);
+document.addEventListener('mouseup', onPointerUp);
+document.addEventListener('touchmove', onPointerMove, { passive: false });
+document.addEventListener('touchend', onPointerUp);
+document.addEventListener('touchcancel', onPointerUp);
+
+// ── Canvas tap / pan ──
+function onCanvasDown(e) {
+  const t = e.target;
+  if (t.closest('.partnership-line') || t.closest('.conn-hit') || t.closest('.link-delete-btn')) return;
+  if (t.id !== 'canvasArea' && t.id !== 'canvas' && t.id !== 'lines-layer' && !t.closest('#lines-layer') && t.id !== 'draw-layer' && !t.closest('#draw-layer')) return;
+  if (e.cancelable) e.preventDefault();
+
+  exitAllEditModes();
+
+  if (currentTool === 'draw') {
+    if (e.touches && e.touches.length > 1) return; // let pinch-zoom handle multi-touch
+    const pos = getPointerPos(e);
+    if (drawEraser) {
+      eraseStrokeAt(pos.clientX, pos.clientY);
+      return;
+    }
+    const canvas = document.getElementById('canvas');
+    const r = canvas.getBoundingClientRect();
+    const x = (pos.clientX - r.left) / zoomLevel;
+    const y = (pos.clientY - r.top) / zoomLevel;
+    pushUndo();
+    const stroke = { points: [{ x, y }], color: drawColor, width: drawLineWidth, el: null };
+    const svg = document.getElementById('draw-layer');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', `M ${x} ${y}`);
+    path.setAttribute('stroke', stroke.color);
+    path.setAttribute('stroke-width', stroke.width);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke-linecap', 'round');
+    path.setAttribute('stroke-linejoin', 'round');
+    svg.appendChild(path);
+    stroke.el = path;
+    drawState = stroke;
+    return;
+  }
+
+  if (currentTool === 'label') {
+    const pos = getPointerPos(e);
+    const canvas = document.getElementById('canvas');
+    const r = canvas.getBoundingClientRect();
+    createLabel((pos.clientX - r.left) / zoomLevel, (pos.clientY - r.top) / zoomLevel);
+    return;
+  }
+
+  if (currentTool === 'move') {
+    deselectAll();
+    const pos = getPointerPos(e);
+    panState = { startX: pos.clientX, startY: pos.clientY, origPanX: panX, origPanY: panY };
+  }
+}
+document.getElementById('canvasArea').addEventListener('mousedown', onCanvasDown);
+document.getElementById('canvasArea').addEventListener('touchstart', onCanvasDown, { passive: false });
+
+// ══════════════════════
+// ZOOM & PAN
+// ══════════════════════
+
+function doZoom(delta) {
+  zoomLevel = Math.max(0.2, Math.min(3, zoomLevel + delta));
+  document.getElementById('zoomLabel').textContent = Math.round(zoomLevel * 100) + '%';
+  applyTransform();
+}
+function applyTransform() {
+  document.getElementById('canvas').style.transform = `translate(${panX}px, ${panY}px) scale(${zoomLevel})`;
+}
+
+document.getElementById('canvasArea').addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const delta = e.deltaY > 0 ? -0.08 : 0.08;
+  const area = document.getElementById('canvasArea');
+  const rect = area.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  const oldZoom = zoomLevel;
+  zoomLevel = Math.max(0.2, Math.min(3, zoomLevel + delta));
+  panX = mx - (mx - panX) * (zoomLevel / oldZoom);
+  panY = my - (my - panY) * (zoomLevel / oldZoom);
+  document.getElementById('zoomLabel').textContent = Math.round(zoomLevel * 100) + '%';
+  applyTransform();
+}, { passive: false });
+
+let lastPinchDist = null;
+document.getElementById('canvasArea').addEventListener('touchstart', (e) => {
+  if (e.touches.length === 2) lastPinchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+}, { passive: true });
+document.getElementById('canvasArea').addEventListener('touchmove', (e) => {
+  if (e.touches.length === 2 && lastPinchDist !== null) {
+    if (e.cancelable) e.preventDefault();
+    const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+    zoomLevel = Math.max(0.2, Math.min(3, zoomLevel * (dist / lastPinchDist)));
+    lastPinchDist = dist;
+    document.getElementById('zoomLabel').textContent = Math.round(zoomLevel * 100) + '%';
+    applyTransform();
+  }
+}, { passive: false });
+document.getElementById('canvasArea').addEventListener('touchend', () => { lastPinchDist = null; });
+
+function fitToView() {
+  if (persons.size === 0 && drawStrokes.length === 0) return;
+  const area = document.getElementById('canvasArea');
+  const areaRect = area.getBoundingClientRect();
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  persons.forEach(p => {
+    const x = parseFloat(p.el.style.left), y = parseFloat(p.el.style.top);
+    minX = Math.min(minX, x - 20); minY = Math.min(minY, y - 20);
+    maxX = Math.max(maxX, x + SHAPE_SIZE + 130); maxY = Math.max(maxY, y + SHAPE_SIZE + 80);
+  });
+  drawStrokes.forEach(s => {
+    s.points.forEach(pt => {
+      minX = Math.min(minX, pt.x - s.width); minY = Math.min(minY, pt.y - s.width);
+      maxX = Math.max(maxX, pt.x + s.width); maxY = Math.max(maxY, pt.y + s.width);
+    });
+  });
+  const pad = 80;
+  const contentW = maxX - minX + pad * 2, contentH = maxY - minY + pad * 2;
+  zoomLevel = Math.min(1.5, Math.min(areaRect.width / contentW, areaRect.height / contentH));
+  panX = (areaRect.width - contentW * zoomLevel) / 2 - minX * zoomLevel + pad * zoomLevel;
+  panY = (areaRect.height - contentH * zoomLevel) / 2 - minY * zoomLevel + pad * zoomLevel;
+  document.getElementById('zoomLabel').textContent = Math.round(zoomLevel * 100) + '%';
+  applyTransform();
+}
+
+// ══════════════════════════════
+// TEXT WRAPPING (overlap-aware)
+// ══════════════════════════════
+
+function updateTextWrapping() {
+  persons.forEach(p => {
+    const textEl = p.el.querySelector('.person-text');
+    if (!textEl) return;
+    if (!p.text) { textEl.style.maxWidth = ''; textEl.classList.remove('wrapped', 'text-left', 'proband-left'); return; }
+
+    const px = parseFloat(p.el.style.left);
+    const py = parseFloat(p.el.style.top);
+
+    // Determine if this person is the LEFT partner in any partnership
+    let isLeftPartner = false;
+    partnerships.forEach(ps => {
+      if (ps.fromId === p.id || ps.toId === p.id) {
+        const otherId = ps.fromId === p.id ? ps.toId : ps.fromId;
+        const other = persons.get(otherId);
+        if (other) {
+          const otherX = parseFloat(other.el.style.left);
+          if (px < otherX) isLeftPartner = true;
+        }
+      }
+    });
+
+    if (isLeftPartner) {
+      textEl.classList.add('text-left');
+      textEl.classList.toggle('proband-left', !!p.proband);
+    } else {
+      textEl.classList.remove('text-left', 'proband-left');
+    }
+
+    // Reset to unwrapped to measure natural width
+    textEl.style.maxWidth = 'none';
+    textEl.classList.remove('wrapped');
+    const naturalWidth = textEl.offsetWidth;
+
+    if (isLeftPartner) {
+      // Text extends to the LEFT from the shape, below it. Its right edge mirrors
+      // the default text's left edge (px + 30): 30px in from the shape's right edge.
+      const textRightEdge = px + SHAPE_SIZE - 30;
+      const textLeft = textRightEdge - naturalWidth;
+      const ty = py + 56;
+      const textBottom = ty + textEl.offsetHeight;
+
+      let minAvail = Infinity;
+      persons.forEach(other => {
+        if (other.id === p.id) return;
+        const ox = parseFloat(other.el.style.left);
+        const oy = parseFloat(other.el.style.top);
+        const oRight = ox + SHAPE_SIZE;
+        const oBottom = oy + SHAPE_SIZE;
+        if (ty < oBottom + 4 && textBottom > oy - 4) {
+          if (oRight > textLeft - 8 && oRight < textRightEdge) {
+            const avail = textRightEdge - oRight - 8;
+            if (avail < minAvail) minAvail = avail;
+          }
+        }
+      });
+
+      if (minAvail < naturalWidth && minAvail > 30) {
+        textEl.style.maxWidth = minAvail + 'px';
+        textEl.classList.add('wrapped');
+      } else {
+        textEl.style.maxWidth = '';
+        textEl.classList.remove('wrapped');
+      }
+    } else {
+      // Text extends to the RIGHT (default), below the shape
+      const tx = px + 30;
+      const ty = py + 56;
+      const textRight = tx + naturalWidth;
+      const textBottom = ty + textEl.offsetHeight;
+
+      let minAvail = Infinity;
+      persons.forEach(other => {
+        if (other.id === p.id) return;
+        const ox = parseFloat(other.el.style.left);
+        const oy = parseFloat(other.el.style.top);
+        const oBottom = oy + SHAPE_SIZE;
+        if (ty < oBottom + 4 && textBottom > oy - 4) {
+          if (ox > tx && ox < textRight + 8) {
+            const avail = ox - tx - 8;
+            if (avail < minAvail) minAvail = avail;
+          }
+        }
+      });
+
+      if (minAvail < naturalWidth && minAvail > 30) {
+        textEl.style.maxWidth = minAvail + 'px';
+        textEl.classList.add('wrapped');
+      } else {
+        textEl.style.maxWidth = '';
+        textEl.classList.remove('wrapped');
+      }
+    }
+  });
+}
+
+// ══════════════════════
+// NUMBERING
+// ══════════════════════
+
+function updateNumbering() {
+  if (numberingMode === 'off') {
+    persons.forEach(p => {
+      const ne = p.el.querySelector('.person-number');
+      if (ne) { ne.textContent = ''; ne.contentEditable = 'false'; ne.classList.remove('editable'); }
+    });
+    return;
+  }
+  if (numberingMode === 'freetext') {
+    persons.forEach(p => {
+      const ne = p.el.querySelector('.person-number');
+      if (!ne) return;
+      ne.textContent = p.customLabel;
+      ne.classList.add('editable');
+      ne.contentEditable = 'false'; // not in active edit — click to edit
+
+      // Attach handlers only once
+      if (!ne._freetextInit) {
+        ne._freetextInit = true;
+        ne.addEventListener('dblclick', (e) => {
+          if (numberingMode !== 'freetext') return;
+          e.stopPropagation();
+          ne.contentEditable = 'true';
+          ne.focus();
+          // Select all text
+          const range = document.createRange();
+          range.selectNodeContents(ne);
+          const sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+        });
+        let lastTapNum = 0;
+        ne.addEventListener('touchend', (e) => {
+          if (numberingMode !== 'freetext') return;
+          const now = Date.now();
+          if (now - lastTapNum < 350) {
+            e.preventDefault(); e.stopPropagation();
+            ne.contentEditable = 'true';
+            ne.focus();
+          }
+          lastTapNum = now;
+        });
+        ne.addEventListener('blur', () => {
+          ne.contentEditable = 'false';
+          const pid = ne.closest('.person')?.id;
+          if (pid) {
+            const pd = persons.get(pid);
+            if (pd) { pd.customLabel = ne.textContent.trim(); }
+          }
+          scheduleSave();
+        });
+        ne.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') { e.preventDefault(); ne.blur(); }
+        });
+        ne.addEventListener('mousedown', (e) => {
+          if (ne.contentEditable === 'true') e.stopPropagation();
+        });
+        ne.addEventListener('touchstart', (e) => {
+          if (ne.contentEditable === 'true') e.stopPropagation();
+        }, { passive: true });
+      }
+    });
+    return;
+  }
+  // Non-freetext modes: remove editable state
+  persons.forEach(p => {
+    const ne = p.el.querySelector('.person-number');
+    if (ne) { ne.contentEditable = 'false'; ne.classList.remove('editable'); }
+  });
+  if (persons.size === 0) return;
+  const list = [];
+  persons.forEach(p => { list.push({ id: p.id, x: parseFloat(p.el.style.left), y: parseFloat(p.el.style.top) }); });
+  list.sort((a, b) => a.y - b.y);
+
+  const generations = [];
+  let currentGen = [list[0]];
+  for (let i = 1; i < list.length; i++) {
+    if (list[i].y - currentGen[0].y < 80) currentGen.push(list[i]);
+    else { generations.push(currentGen); currentGen = [list[i]]; }
+  }
+  generations.push(currentGen);
+
+  const roman = ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'];
+  const toLetter = (n) => { let s = ''; while (n >= 0) { s = String.fromCharCode(65 + (n % 26)) + s; n = Math.floor(n / 26) - 1; } return s; };
+  let globalIdx = 0;
+  generations.forEach((gen, gi) => {
+    gen.sort((a, b) => a.x - b.x);
+    gen.forEach((item, pi) => {
+      const p = persons.get(item.id);
+      if (p) {
+        const numEl = p.el.querySelector('.person-number');
+        if (numberingMode === 'lettersonly') {
+          numEl.textContent = toLetter(globalIdx);
+        } else {
+          const genLabel = gi < roman.length ? roman[gi] : (gi + 1);
+          const posLabel = numberingMode === 'letters' ? toLetter(pi) : (pi + 1);
+          numEl.textContent = `${genLabel}-${posLabel}`;
+        }
+        globalIdx++;
+        const hasChildLine = childLinks.some(cl => cl.childId === p.id);
+        // Check if this person is part of a twin link
+        const twinLink = twinLinks.find(t => t.child1Id === p.id || t.child2Id === p.id);
+        if (twinLink) {
+          // Determine if this is the left or right twin
+          const otherId = twinLink.child1Id === p.id ? twinLink.child2Id : twinLink.child1Id;
+          const other = persons.get(otherId);
+          const isRightTwin = other && parseFloat(p.el.style.left) > parseFloat(other.el.style.left);
+          numEl.classList.remove('shifted-left', 'shifted-right');
+          numEl.classList.add(isRightTwin ? 'shifted-right' : 'shifted-left');
+        } else {
+          numEl.classList.remove('shifted-left', 'shifted-right');
+          if (hasChildLine) numEl.classList.add('shifted-left');
+        }
+      }
+    });
+  });
+}
+
+// ══════════════════════
+// COLOUR KEY / LEGEND
+// ══════════════════════
+
+let legendVisible = false;
+let legendX = 100, legendY = 100;
+
+function toggleLegend() {
+  legendVisible = !legendVisible;
+  if (legendVisible) {
+    buildLegendBox();
+  } else {
+    const box = document.getElementById('legend-box');
+    if (box) box.remove();
+  }
+  scheduleSave();
+}
+
+function buildLegendBox() {
+  // Remove existing
+  let box = document.getElementById('legend-box');
+  if (box) box.remove();
+
+  // Collect colours in use
+  const colorsInUse = [];
+  const seen = new Set();
+  // Also collect shading entries
+  const shadingsInUse = [];
+  const seenShading = new Set();
+  persons.forEach(p => {
+    if (p.fillMode === 'solid' && p.fillColor && !seen.has(p.fillColor)) { seen.add(p.fillColor); colorsInUse.push(p.fillColor); }
+    if (p.fillMode === 'half') p.halves.forEach(q => { if (q && !seen.has(q)) { seen.add(q); colorsInUse.push(q); } });
+    if (p.fillMode === 'quartered') p.quarters.forEach(q => { if (q && !seen.has(q)) { seen.add(q); colorsInUse.push(q); } });
+    if (p.fillMode === 'shading') {
+      const sKey = `shading:${p.shadingPattern || 'stripes'}:${p.shadingCoverage || 'full'}`;
+      if (!seenShading.has(sKey)) { seenShading.add(sKey); shadingsInUse.push({ pattern: p.shadingPattern || 'stripes', coverage: p.shadingCoverage || 'full', key: sKey }); }
+    }
+  });
+
+  box = document.createElement('div');
+  box.className = 'legend-box';
+  box.id = 'legend-box';
+  box.style.left = legendX + 'px';
+  box.style.top = legendY + 'px';
+
+  const title = document.createElement('h4');
+  title.textContent = 'KEY';
+  box.appendChild(title);
+
+  if (colorsInUse.length === 0 && shadingsInUse.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'legend-empty';
+    empty.textContent = 'No fill colours or shading used yet.';
+    box.appendChild(empty);
+  } else {
+    colorsInUse.forEach(color => {
+      const row = document.createElement('div');
+      row.className = 'legend-row';
+      const swatch = document.createElement('div');
+      swatch.className = 'legend-swatch';
+      swatch.style.background = color;
+      const input = document.createElement('input');
+      input.className = 'legend-input';
+      input.type = 'text';
+      input.placeholder = 'Enter meaning…';
+      input.value = legendLabels[color] || '';
+      input.addEventListener('input', () => { legendLabels[color] = input.value; scheduleSave(); });
+      input.addEventListener('mousedown', (e) => e.stopPropagation());
+      input.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+      row.appendChild(swatch);
+      row.appendChild(input);
+      box.appendChild(row);
+    });
+    shadingsInUse.forEach(sh => {
+      const row = document.createElement('div');
+      row.className = 'legend-row';
+      const swatch = document.createElement('div');
+      swatch.className = 'legend-swatch';
+      swatch.style.overflow = 'hidden';
+      swatch.style.position = 'relative';
+      // Build mini SVG pattern swatch
+      const pid = 'leg-' + sh.key.replace(/:/g, '-');
+      let patDef = '';
+      if (sh.pattern === 'dots') {
+        patDef = `<pattern id="${pid}" patternUnits="userSpaceOnUse" width="6" height="6"><circle cx="3" cy="3" r="1.2" fill="${STROKE_COLOR}"/></pattern>`;
+      } else {
+        patDef = `<pattern id="${pid}" patternUnits="userSpaceOnUse" width="5" height="5" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="5" stroke="${STROKE_COLOR}" stroke-width="1.4"/></pattern>`;
+      }
+      let fillRect = '';
+      if (sh.coverage === 'full') {
+        fillRect = `<rect width="20" height="20" fill="url(#${pid})"/>`;
+      } else if (sh.coverage === 'half-left') {
+        fillRect = `<rect width="10" height="20" fill="url(#${pid})"/><rect x="10" width="10" height="20" fill="#fff"/>`;
+      } else {
+        fillRect = `<rect width="10" height="20" fill="#fff"/><rect x="10" width="10" height="20" fill="url(#${pid})"/>`;
+      }
+      swatch.innerHTML = `<svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><defs>${patDef}</defs>${fillRect}<rect width="20" height="20" fill="none" stroke="${STROKE_COLOR}" stroke-width="1"/></svg>`;
+      const input = document.createElement('input');
+      input.className = 'legend-input';
+      input.type = 'text';
+      input.placeholder = 'Enter meaning…';
+      input.value = legendLabels[sh.key] || '';
+      input.addEventListener('input', () => { legendLabels[sh.key] = input.value; scheduleSave(); });
+      input.addEventListener('mousedown', (e) => e.stopPropagation());
+      input.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+      row.appendChild(swatch);
+      row.appendChild(input);
+      box.appendChild(row);
+    });
+  }
+
+  // Make draggable
+  const onDown = (e) => {
+    if (e.target.tagName === 'INPUT') return;
+    if (e.cancelable) e.preventDefault();
+    pushUndo();
+    const pos = getPointerPos(e);
+    legendDragState = {
+      el: box,
+      startX: pos.clientX,
+      startY: pos.clientY,
+      origLeft: parseFloat(box.style.left),
+      origTop: parseFloat(box.style.top)
+    };
+    box.classList.add('dragging');
+  };
+  box.addEventListener('mousedown', onDown);
+  box.addEventListener('touchstart', onDown, { passive: false });
+
+  document.getElementById('canvas').appendChild(box);
+}
+
+let legendDragState = null;
+
+// ══════════════════════
+// KEYBOARD
+// ══════════════════════
+
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+    const ae = document.activeElement;
+    if (ae && (ae.tagName === 'TEXTAREA' || ae.tagName === 'INPUT' || ae.contentEditable === 'true')) return;
+    e.preventDefault(); undo(); return;
+  }
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey) || (e.key === 'Z' && e.shiftKey))) {
+    const ae = document.activeElement;
+    if (ae && (ae.tagName === 'TEXTAREA' || ae.tagName === 'INPUT' || ae.contentEditable === 'true')) return;
+    e.preventDefault(); redo(); return;
+  }
+  if (e.key === 'Delete' || e.key === 'Backspace') {
+    const ae = document.activeElement;
+    if (ae && (ae.tagName === 'TEXTAREA' || ae.tagName === 'INPUT' || ae.contentEditable === 'true')) return;
+    if (multiSelected.size > 0) {
+      deleteMultiSelected();
+      return;
+    }
+    if (multiSelectedPartnerships.size > 0) {
+      deleteMultiSelectedPartnerships();
+      return;
+    }
+    if (multiSelectedChildLinks.size > 0) {
+      deleteMultiSelectedChildLinks();
+      return;
+    }
+    if (selectedPerson) removePerson(selectedPerson);
+    if (selectedLabel) removeLabel(selectedLabel);
+    if (selectedPartnershipId) deleteSelectedPartnership();
+    if (selectedChildLinkId) deleteSelectedChildLink();
+  }
+  if (e.key === 'Escape') { deselectAll(); connectSource = null; childPartnershipSource = null; twinSource = null; exitAllEditModes(); updateBanner(); updateStatus(); }
+  // Arrow key nudging in individual move mode
+  if (individualMoveMode && (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+    const ae = document.activeElement;
+    if (ae && (ae.tagName === 'TEXTAREA' || ae.tagName === 'INPUT' || ae.contentEditable === 'true')) return;
+    // Must have a person or label selected
+    const hasPersons = selectedPerson || multiSelected.size > 0;
+    const hasLabel = selectedLabel;
+    if (!hasPersons && !hasLabel) return;
+    e.preventDefault();
+    const step = e.shiftKey ? 10 : 1;
+    const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
+    const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
+    // Debounced undo: push only on first press of a burst
+    if (!nudgeState) {
+      pushUndo();
+      nudgeState = { timer: null };
+    }
+    clearTimeout(nudgeState.timer);
+    nudgeState.timer = setTimeout(() => { nudgeState = null; }, 500);
+    if (hasPersons) {
+      const ids = multiSelected.size > 0 ? [...multiSelected] : [selectedPerson];
+      ids.forEach(id => {
+        const p = persons.get(id);
+        if (!p) return;
+        const newX = parseFloat(p.el.style.left) + dx;
+        const newY = parseFloat(p.el.style.top) + dy;
+        p.el.style.left = newX + 'px';
+        p.el.style.top = newY + 'px';
+        p.x = newX;
+        p.y = newY;
+      });
+      updateAllConnections();
+      updateNumbering();
+      updateTextWrapping();
+      expandCanvasIfNeeded();
+    }
+    if (hasLabel) {
+      const lbl = labels.get(selectedLabel);
+      if (lbl) {
+        const newX = parseFloat(lbl.el.style.left) + dx;
+        const newY = parseFloat(lbl.el.style.top) + dy;
+        lbl.el.style.left = newX + 'px';
+        lbl.el.style.top = newY + 'px';
+      }
+    }
+    scheduleSave();
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
+    const ae = document.activeElement;
+    if (ae && (ae.tagName === 'TEXTAREA' || ae.tagName === 'INPUT' || ae.contentEditable === 'true')) return;
+    e.preventDefault(); selectAllPersons();
+  }
+});
+
+// ══════════════════════
+// CLEAR
+// ══════════════════════
+
+function clearAll() {
+  if (!confirm('Remove everything from the canvas?')) return;
+  pushUndo();
+  document.getElementById('canvas').querySelectorAll('.person, .label, .legend-box').forEach(el => el.remove());
+  document.getElementById('lines-layer').innerHTML = '';
+  document.getElementById('draw-layer').innerHTML = '';
+  persons.clear(); labels.clear();
+  partnerships.length = 0; childLinks.length = 0; twinLinks.length = 0;
+  multiSelected.clear();
+  multiSelectedPartnerships.clear();
+  multiSelectedChildLinks.clear();
+  selectedPerson = null; selectedLabel = null; connectSource = null; childPartnershipSource = null; twinSource = null;
+  selectedPartnershipId = null; selectedChildLinkId = null;
+  removeLinkDeleteBtn();
+  personIdCounter = labelIdCounter = lineIdCounter = 0;
+  legendLabels = {}; legendVisible = false;
+  drawStrokes.length = 0;
+  canvasWidth = 6000; canvasHeight = 6000; applyCanvasSize();
+  hideProps();
+  hideMultiSelectPanel();
+  document.getElementById('partnershipPropsPanel').classList.remove('visible');
+  document.getElementById('childLinkPropsPanel').classList.remove('visible');
+  document.getElementById('multiPartnershipPanel').classList.remove('visible');
+  document.getElementById('multiChildLinkPanel').classList.remove('visible');
+  try { localStorage.removeItem(PS_SESSION_KEY); } catch(e) {}
+  document.getElementById('statusBar').textContent = 'Canvas cleared';
+}
+
+// ══════════════════════
+// SESSION SAVE / LOAD
+// ══════════════════════
+
+function buildSessionData() {
+  normalizeRelatedPartnershipTypes();
+  // Sync freetext labels from DOM before saving
+  if (numberingMode === 'freetext') {
+    persons.forEach(p => {
+      const ne = p.el.querySelector('.person-number');
+      if (ne && ne.textContent !== undefined) p.customLabel = ne.textContent.trim();
+    });
+  }
+  const personArr = [];
+  persons.forEach(p => {
+    personArr.push({
+      id: p.id, shape: p.shape,
+      x: parseFloat(p.el.style.left), y: parseFloat(p.el.style.top),
+      text: p.text, deceased: p.deceased, proband: p.proband,
+      fillMode: p.fillMode, fillColor: p.fillColor, quarters: [...p.quarters],
+      halves: [...(p.halves || [null, null])],
+      shadingPattern: p.shadingPattern || 'stripes',
+      shadingCoverage: p.shadingCoverage || 'full',
+      centerText: p.centerText || '', miscarriageSex: p.miscarriageSex || 'unknown',
+      noSnap: !!p.noSnap,
+      siblingFixed: !!p.siblingFixed,
+      customLabel: p.customLabel != null ? p.customLabel : 'Lbl'
+    });
+  });
+  const labelArr = [];
+  labels.forEach(l => {
+    labelArr.push({
+      id: l.id, x: parseFloat(l.el.style.left), y: parseFloat(l.el.style.top),
+      text: l.el.querySelector('.label-text')?.innerText || l.text,
+      size: parseInt(l.el.style.fontSize) || l.size,
+      bordered: !!l.bordered
+    });
+  });
+  return {
+    version: 4,
+    personIdCounter, labelIdCounter, lineIdCounter,
+    persons: personArr,
+    labels: labelArr,
+    partnerships: partnerships.map(p => ({ id: p.id, fromId: p.fromId, toId: p.toId, type: p.type || 'normal' })),
+    childLinks: childLinks.map(c => ({ id: c.id, partnershipId: c.partnershipId, childId: c.childId, branchYOffset: c.branchYOffset || 0, dashed: !!c.dashed })),
+    twinLinks: twinLinks.map(t => ({ id: t.id, child1Id: t.child1Id, child2Id: t.child2Id, type: t.type, partnershipId: t.partnershipId })),
+    legendLabels,
+    legendVisible, legendX, legendY,
+    zoom: zoomLevel, panX, panY,
+    numberingMode,
+    partnerGapMultiplier: partnerGap / SHAPE_SIZE,
+    childHeightMultiplier: childHeight / SHAPE_SIZE,
+    drawStrokes: drawStrokes.map(s => ({ points: s.points, color: s.color, width: s.width }))
+  };
+}
+
+function restoreSession(data) {
+  document.getElementById('canvas').querySelectorAll('.person, .label, .legend-box').forEach(el => el.remove());
+  document.getElementById('lines-layer').innerHTML = '';
+  document.getElementById('draw-layer').innerHTML = '';
+  persons.clear(); labels.clear();
+  partnerships.length = 0; childLinks.length = 0; twinLinks.length = 0;
+  multiSelected.clear(); multiSelectedPartnerships.clear(); multiSelectedChildLinks.clear();
+  selectedPerson = null; selectedLabel = null;
+  selectedPartnershipId = null; selectedChildLinkId = null;
+  removeLinkDeleteBtn();
+  hideMultiSelectPanel();
+  document.getElementById('multiPartnershipPanel').classList.remove('visible');
+  document.getElementById('multiChildLinkPanel').classList.remove('visible');
+  drawStrokes.length = 0;
+
+  personIdCounter = data.personIdCounter || 0;
+  labelIdCounter = data.labelIdCounter || 0;
+  lineIdCounter = data.lineIdCounter || 0;
+  legendLabels = data.legendLabels || {};
+  legendX = data.legendX || 100;
+  legendY = data.legendY || 100;
+  legendVisible = !!data.legendVisible;
+
+  (data.persons || []).forEach(pd => {
+    // Backward compat: old 'affected' boolean
+    let fm = pd.fillMode || 'none';
+    let fc = pd.fillColor || FILL_COLORS[0];
+    let q = pd.quarters || [null, null, null, null];
+    let h = pd.halves || [null, null];
+    if (pd.affected && fm === 'none') { fm = 'solid'; fc = '#1a2332'; }
+    addPerson(pd.id, pd.x, pd.y, pd.shape, pd.text, pd.deceased, pd.proband, fm, fc, q, pd.centerText || '', pd.miscarriageSex || 'unknown', h, pd.shadingPattern || 'stripes', pd.shadingCoverage || 'full');
+    if (pd.noSnap) { const pp = persons.get(pd.id); if (pp) pp.noSnap = true; }
+    if (pd.siblingFixed) { const pp = persons.get(pd.id); if (pp) pp.siblingFixed = true; }
+    if (pd.customLabel) { const pp = persons.get(pd.id); if (pp) pp.customLabel = pd.customLabel; }
+    const n = parseInt(pd.id.split('-')[1]) || 0; if (n > personIdCounter) personIdCounter = n;
+  });
+  (data.labels || []).forEach(ld => {
+    createLabel(ld.x, ld.y, ld.id, ld.text, ld.size, !!ld.bordered);
+    const n = parseInt(ld.id.split('-')[1]) || 0; if (n > labelIdCounter) labelIdCounter = n;
+  });
+  (data.partnerships || []).forEach(pd => {
+    addPartnership(pd.fromId, pd.toId, pd.id, pd.type || 'normal');
+    const n = parseInt(pd.id.split('-')[1]) || 0; if (n > lineIdCounter) lineIdCounter = n;
+  });
+  (data.childLinks || []).forEach(cd => {
+    addChildLink(cd.partnershipId, cd.childId, cd.id);
+    const cl = childLinks.find(c => c.id === cd.id);
+    if (cl) {
+      if (cd.dashed) {
+        cl.dashed = true;
+        cl.els[0].setAttribute('stroke-dasharray', '6 4');
+      }
+    }
+    const n = parseInt(cd.id.split('-')[1]) || 0; if (n > lineIdCounter) lineIdCounter = n;
+  });
+  (data.twinLinks || []).forEach(td => {
+    addTwinLink(td.child1Id, td.child2Id, td.type, td.id);
+    const n = parseInt(td.id.split('-')[1]) || 0; if (n > lineIdCounter) lineIdCounter = n;
+  });
+
+  normalizeRelatedPartnershipTypes();
+
+  if (data.zoom) zoomLevel = data.zoom;
+  if (data.panX !== undefined) panX = data.panX;
+  if (data.panY !== undefined) panY = data.panY;
+  if (data.numberingMode !== undefined) numberingMode = data.numberingMode;
+  else if (data.showNumbering === false) numberingMode = 'off';
+  document.querySelectorAll('[data-nm]').forEach(b => b.classList.toggle('active', b.dataset.nm === numberingMode));
+  if (data.partnerGapMultiplier !== undefined) {
+    partnerGap = SHAPE_SIZE * data.partnerGapMultiplier;
+    document.getElementById('partnerGapSlider').value = data.partnerGapMultiplier;
+    document.getElementById('partnerGapLabel').textContent = data.partnerGapMultiplier + '×';
+  }
+  if (data.childHeightMultiplier !== undefined) {
+    childHeight = SHAPE_SIZE * data.childHeightMultiplier;
+    document.getElementById('childHeightSlider').value = data.childHeightMultiplier;
+    document.getElementById('childHeightLabel').textContent = data.childHeightMultiplier + '×';
+  }
+  document.getElementById('zoomLabel').textContent = Math.round(zoomLevel * 100) + '%';
+  applyTransform();
+  updateNumbering();
+  updateTextWrapping();
+  expandCanvasIfNeeded();
+
+  // Restore legend if it was visible
+  if (legendVisible) buildLegendBox();
+
+  // Restore draw strokes
+  (data.drawStrokes || []).forEach(sd => {
+    const stroke = { points: sd.points, color: sd.color, width: sd.width, el: null };
+    stroke.el = createStrokeSVG(stroke);
+    drawStrokes.push(stroke);
+  });
+}
+
+function exportJSON() {
+  const data = buildSessionData();
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const link = document.createElement('a');
+  link.download = 'pedigree-session.json';
+  link.href = URL.createObjectURL(blob);
+  link.click();
+  URL.revokeObjectURL(link.href);
+  document.getElementById('statusBar').textContent = 'Session saved!';
+}
+
+function importJSON(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      pushUndo();
+      isRestoring = true;
+      restoreSession(data);
+      isRestoring = false;
+      document.getElementById('statusBar').textContent = 'Session loaded!';
+      document.getElementById('splashOverlay').classList.add('hidden');
+    } catch (err) { alert('Could not read session file: ' + err.message); }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+// ══════════════════════
+// EXPORT IMAGE
+// ══════════════════════
+
+// ── Shared export bounds computation ──
+function computeExportBounds() {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  persons.forEach(p => {
+    const x = parseFloat(p.el.style.left), y = parseFloat(p.el.style.top);
+    let isLeftP = false;
+    partnerships.forEach(ps => {
+      if (ps.fromId === p.id || ps.toId === p.id) {
+        const otherId = ps.fromId === p.id ? ps.toId : ps.fromId;
+        const other = persons.get(otherId);
+        if (other && x < parseFloat(other.el.style.left)) isLeftP = true;
+      }
+    });
+    minX = Math.min(minX, x - (isLeftP ? 140 : 20)); minY = Math.min(minY, y - 20);
+    maxX = Math.max(maxX, x + SHAPE_SIZE + (isLeftP ? 20 : 140)); maxY = Math.max(maxY, y + SHAPE_SIZE + 80);
+  });
+  labels.forEach(l => {
+    const x = parseFloat(l.el.style.left), y = parseFloat(l.el.style.top);
+    minX = Math.min(minX, x); minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x + l.el.offsetWidth + 10); maxY = Math.max(maxY, y + l.el.offsetHeight + 10);
+  });
+  drawStrokes.forEach(s => {
+    s.points.forEach(pt => {
+      minX = Math.min(minX, pt.x - s.width); minY = Math.min(minY, pt.y - s.width);
+      maxX = Math.max(maxX, pt.x + s.width); maxY = Math.max(maxY, pt.y + s.width);
+    });
+  });
+  const legendColors = [];
+  const legendShadings = [];
+  if (legendVisible) {
+    const seen = new Set();
+    const seenSh = new Set();
+    persons.forEach(p => {
+      if (p.fillMode === 'solid' && p.fillColor && !seen.has(p.fillColor)) { seen.add(p.fillColor); legendColors.push({ color: p.fillColor, label: legendLabels[p.fillColor] || '' }); }
+      if (p.fillMode === 'half') p.halves.forEach(q => { if (q && !seen.has(q)) { seen.add(q); legendColors.push({ color: q, label: legendLabels[q] || '' }); } });
+      if (p.fillMode === 'quartered') p.quarters.forEach(q => { if (q && !seen.has(q)) { seen.add(q); legendColors.push({ color: q, label: legendLabels[q] || '' }); } });
+      if (p.fillMode === 'shading') {
+        const sKey = `shading:${p.shadingPattern || 'stripes'}:${p.shadingCoverage || 'full'}`;
+        if (!seenSh.has(sKey)) { seenSh.add(sKey); legendShadings.push({ pattern: p.shadingPattern || 'stripes', coverage: p.shadingCoverage || 'full', key: sKey, label: legendLabels[sKey] || '' }); }
+      }
+    });
+    const totalLegendItems = legendColors.length + legendShadings.length;
+    if (totalLegendItems > 0) {
+      const legendH = totalLegendItems * 24 + 30;
+      minX = Math.min(minX, legendX - 10); minY = Math.min(minY, legendY - 10);
+      maxX = Math.max(maxX, legendX + 220); maxY = Math.max(maxY, legendY + legendH + 10);
+    }
+  }
+  const pad = 60;
+  return { minX: minX - pad, minY: minY - pad, maxX: maxX + pad, maxY: maxY + pad, legendColors, legendShadings };
+}
+
+function saveAsImage() {
+  document.getElementById('statusBar').textContent = 'Generating image…';
+  deselectAll();
+
+  if (persons.size === 0 && labels.size === 0 && drawStrokes.length === 0) { document.getElementById('statusBar').textContent = 'Nothing to export'; return; }
+
+  const { minX, minY, maxX, maxY, legendColors, legendShadings } = computeExportBounds();
+
+  const scale = 2;
+  const w = (maxX - minX) * scale, h = (maxY - minY) * scale;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  ctx.scale(scale, scale);
+  ctx.translate(-minX, -minY);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(minX, minY, maxX - minX, maxY - minY);
+
+  const FONT = '-apple-system, "Segoe UI", system-ui, Helvetica, sans-serif';
+
+  // ── Helper: draw an SVG-path-d string on Canvas via Path2D ──
+  function strokePathD(d) { const p = new Path2D(d); ctx.stroke(p); }
+  function fillPathD(d) { const p = new Path2D(d); ctx.fill(p); }
+
+  // ── Helper: draw a shape at canvas position (x,y) using shared geometry ──
+  // Shared paths are in 0-52 viewBox coords; translate to (x,y) in canvas space.
+  function drawShapeAtPos(dStr, x, y) {
+    const raw = new Path2D(dStr);
+    const out = new Path2D();
+    out.addPath(raw, new DOMMatrix().translateSelf(x, y));
+    return out;
+  }
+
+  // ── Draw partnerships (uses shared computePartnershipGeom) ──
+  ctx.strokeStyle = STROKE_COLOR; ctx.lineWidth = STROKE_W;
+
+  // Pre-compute all geometries for crossing detection
+  const pngPshipGeoms = [];
+  partnerships.forEach(pship => {
+    const fromP = persons.get(pship.fromId), toP = persons.get(pship.toId);
+    if (!fromP || !toP) return;
+    const fc = getPersonCenter(fromP), tc = getPersonCenter(toP);
+    const geom = computePartnershipGeom(fc.x, fc.y, tc.x, tc.y, pship.type);
+    pngPshipGeoms.push({ pship, geom });
+  });
+
+  const pngClPaths = [];
+  childLinks.forEach(cl => {
+    const pship = partnerships.find(p => p.id === cl.partnershipId);
+    const child = persons.get(cl.childId);
+    if (!pship || !child) return;
+    const fromP = persons.get(pship.fromId), toP = persons.get(pship.toId);
+    if (!fromP || !toP) return;
+    const fc = getPersonCenter(fromP), tc = getPersonCenter(toP);
+    const midX = (fc.x + tc.x) / 2, midY = (fc.y + tc.y) / 2;
+    const childCenter = getPersonCenter(child);
+    const childTop = parseFloat(child.el.style.top);
+    const siblingIds = childLinks.filter(c2 => c2.partnershipId === cl.partnershipId).map(c2 => c2.childId);
+    const twinLink = twinLinks.find(t => t.child1Id === cl.childId || t.child2Id === cl.childId);
+    let twinInfo = null;
+    if (twinLink) {
+      const otherId = twinLink.child1Id === cl.childId ? twinLink.child2Id : twinLink.child1Id;
+      const otherChild = persons.get(otherId);
+      if (otherChild) twinInfo = { otherCenterX: getPersonCenter(otherChild).x, otherTop: parseFloat(otherChild.el.style.top) };
+    }
+    const siblingTops = siblingIds
+      .filter(id => { const p2 = persons.get(id); return p2 && !p2.noSnap && id !== cl.childId; })
+      .map(id => parseFloat(persons.get(id).el.style.top));
+    pngClPaths.push({ cl, d: computeChildLinkD(midX, midY, childCenter.x, childTop, child.noSnap, siblingTops, twinInfo, cl.branchYOffset || 0) });
+  });
+
+  // Collect segments and find crossings for export
+  const pngSegs = [];
+  pngClPaths.forEach(item => {
+    const pts = parsePathPoints(item.d);
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1];
+      if (Math.abs(a.y - b.y) < 0.5) pngSegs.push({ type: 'h', y: a.y, x1: Math.min(a.x, b.x), x2: Math.max(a.x, b.x), src: item.cl.id, fam: item.cl.partnershipId });
+      else if (Math.abs(a.x - b.x) < 0.5) pngSegs.push({ type: 'v', x: a.x, y1: Math.min(a.y, b.y), y2: Math.max(a.y, b.y), src: item.cl.id, fam: item.cl.partnershipId });
+    }
+  });
+  pngPshipGeoms.forEach(item => {
+    const g = item.geom;
+    if (Math.abs(g.y1 - g.y2) < 0.5) pngSegs.push({ type: 'h', y: g.y1, x1: Math.min(g.x1, g.x2), x2: Math.max(g.x1, g.x2), src: item.pship.id, fam: item.pship.id });
+    else if (Math.abs(g.x1 - g.x2) < 0.5) pngSegs.push({ type: 'v', x: g.x1, y1: Math.min(g.y1, g.y2), y2: Math.max(g.y1, g.y2), src: item.pship.id, fam: item.pship.id });
+  });
+  const pngCrossings = findLineCrossings(pngSegs);
+  const pngByV = new Map();
+  pngCrossings.forEach(c => { if (!pngByV.has(c.vSrc)) pngByV.set(c.vSrc, []); pngByV.get(c.vSrc).push({ cx: c.cx, cy: c.cy, hSrc: c.hSrc }); });
+  pngByV.forEach((pts, key) => pngByV.set(key, mergeNearbyCrossings(pts)));
+
+  // Draw partnerships (with bridge overlays for rare vertical partnerships)
+  pngPshipGeoms.forEach(item => {
+    const g = item.geom;
+    ctx.beginPath(); ctx.moveTo(g.x1, g.y1); ctx.lineTo(g.x2, g.y2); ctx.stroke();
+    if (g.consang) { ctx.beginPath(); ctx.moveTo(g.consang.x1, g.consang.y1); ctx.lineTo(g.consang.x2, g.consang.y2); ctx.stroke(); }
+    if (g.slashLines) g.slashLines.forEach(sl => { ctx.beginPath(); ctx.moveTo(sl.x1, sl.y1); ctx.lineTo(sl.x2, sl.y2); ctx.stroke(); });
+
+    // Partnership bridge arcs (vertical partnerships only)
+    const pPts = pngByV.get(item.pship.id);
+    if (pPts && pPts.length > 0) {
+      const bd = buildLineBridgeD(g.x1, g.y1, g.x2, g.y2, pPts.map(c => c.cy));
+      if (bd) {
+        ctx.save();
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = STROKE_W + 4;
+        strokePathD(bd);
+        ctx.strokeStyle = STROKE_COLOR; ctx.lineWidth = STROKE_W;
+        strokePathD(bd);
+        ctx.restore();
+      }
+    }
+  });
+
+  // Draw child links with bridge arcs on vertical segments
+  ctx.strokeStyle = STROKE_COLOR; ctx.lineWidth = STROKE_W;
+  pngClPaths.forEach(item => {
+    const pts = pngByV.get(item.cl.id);
+    const d = (pts && pts.length > 0) ? rebuildPathWithBridges(item.d, pts) : item.d;
+    if (item.cl.dashed) ctx.setLineDash([6, 4]);
+    strokePathD(d);
+    if (item.cl.dashed) ctx.setLineDash([]);
+  });
+
+  // ── Draw twin bars (uses shared computeTwinBarD) ──
+  ctx.strokeStyle = STROKE_COLOR; ctx.lineWidth = STROKE_W;
+  twinLinks.forEach(tl => {
+    const c1 = persons.get(tl.child1Id), c2 = persons.get(tl.child2Id);
+    if (!c1 || !c2) return;
+    const pship = partnerships.find(p => p.id === tl.partnershipId);
+    if (!pship) return;
+    const fp = persons.get(pship.fromId), tp = persons.get(pship.toId);
+    if (!fp || !tp) return;
+    const fc = getPersonCenter(fp), tc = getPersonCenter(tp);
+    const midY = (fc.y + tc.y) / 2;
+    const cc1 = getPersonCenter(c1), cc2 = getPersonCenter(c2);
+    const c1Top = parseFloat(c1.el.style.top), c2Top = parseFloat(c2.el.style.top);
+    const forkX = (cc1.x + cc2.x) / 2;
+    const branchY = Math.max(midY + 4, (c1Top + c2Top) / 2 - SHAPE_HALF);
+    const d = computeTwinBarD(tl.type, forkX, branchY, cc1.x, cc2.x, c1Top, c2Top);
+    if (d) strokePathD(d);
+  });
+
+  // ── Draw persons (uses shared shape geometry via Path2D) ──
+  persons.forEach(p => {
+    const x = parseFloat(p.el.style.left), y = parseFloat(p.el.style.top);
+    const cx = x + SHAPE_HALF, cy = y + SHAPE_HALF;
+    ctx.save();
+    ctx.strokeStyle = STROKE_COLOR; ctx.lineWidth = STROKE_W;
+
+    const outline = drawShapeAtPos(shapePathD(p.shape), x, y);
+
+    // Fill
+    if (p.fillMode === 'solid' && p.fillColor) {
+      ctx.fillStyle = p.fillColor; ctx.fill(outline);
+    } else if (p.fillMode === 'half') {
+      const hDs = halfPathDs(p.shape);
+      hDs.forEach((hd, i) => {
+        ctx.fillStyle = p.halves[i] || '#ffffff';
+        ctx.fill(drawShapeAtPos(hd, x, y));
+      });
+    } else if (p.fillMode === 'quartered') {
+      const qDs = quarterPathDs(p.shape);
+      qDs.forEach((qd, i) => {
+        ctx.fillStyle = p.quarters[i] || '#ffffff';
+        ctx.fill(drawShapeAtPos(qd, x, y));
+      });
+    } else if (p.fillMode === 'shading') {
+      // Create canvas pattern for shading
+      const patCanvas = document.createElement('canvas');
+      const patCtx = patCanvas.getContext('2d');
+      const sPat = p.shadingPattern || 'stripes';
+      const sCov = p.shadingCoverage || 'full';
+      if (sPat === 'dots') {
+        patCanvas.width = 8; patCanvas.height = 8;
+        patCtx.fillStyle = STROKE_COLOR;
+        patCtx.beginPath(); patCtx.arc(4, 4, 1.6, 0, Math.PI * 2); patCtx.fill();
+      } else {
+        patCanvas.width = 7; patCanvas.height = 7;
+        patCtx.strokeStyle = STROKE_COLOR; patCtx.lineWidth = 1.8;
+        patCtx.beginPath(); patCtx.moveTo(-2, 7); patCtx.lineTo(7, -2); patCtx.stroke();
+        patCtx.beginPath(); patCtx.moveTo(-2 + 7, 7); patCtx.lineTo(7 + 7, -2); patCtx.stroke();
+        patCtx.beginPath(); patCtx.moveTo(-2 - 7, 7); patCtx.lineTo(7 - 7, -2); patCtx.stroke();
+      }
+      const canvasPat = ctx.createPattern(patCanvas, 'repeat');
+      if (sCov === 'full') {
+        ctx.fillStyle = '#ffffff'; ctx.fill(outline);
+        ctx.save(); ctx.clip(outline); ctx.fillStyle = canvasPat; ctx.fillRect(x, y, SHAPE_SIZE, SHAPE_SIZE); ctx.restore();
+      } else {
+        const hDs = halfPathDs(p.shape);
+        const shadedIdx = sCov === 'half-left' ? 0 : 1;
+        const clearIdx = sCov === 'half-left' ? 1 : 0;
+        // White fill on non-shaded half
+        ctx.fillStyle = '#ffffff';
+        ctx.fill(drawShapeAtPos(hDs[clearIdx], x, y));
+        // White background + pattern on shaded half
+        ctx.fillStyle = '#ffffff'; ctx.fill(drawShapeAtPos(hDs[shadedIdx], x, y));
+        const halfPath = drawShapeAtPos(hDs[shadedIdx], x, y);
+        ctx.save(); ctx.clip(halfPath); ctx.fillStyle = canvasPat; ctx.fillRect(x, y, SHAPE_SIZE, SHAPE_SIZE); ctx.restore();
+        // Divider line
+        ctx.save(); ctx.strokeStyle = 'rgba(26,35,50,0.3)'; ctx.lineWidth = 1;
+        const dl = halfDividerCoords(p.shape);
+        ctx.beginPath(); ctx.moveTo(x + dl.x1, y + dl.y1); ctx.lineTo(x + dl.x2, y + dl.y2); ctx.stroke();
+        ctx.restore();
+      }
+    } else {
+      if (!isLineShape(p.shape)) { ctx.fillStyle = '#ffffff'; ctx.fill(outline); }
+    }
+
+    // Border
+    ctx.stroke(outline);
+
+    // Adopted brackets
+    if (isAdoptedShape(p.shape)) {
+      ctx.stroke(drawShapeAtPos(BRACKET_LEFT_D, x, y));
+      ctx.stroke(drawShapeAtPos(BRACKET_RIGHT_D, x, y));
+    }
+
+    // Half divider
+    if (p.fillMode === 'half') {
+      ctx.save(); ctx.strokeStyle = 'rgba(26,35,50,0.3)'; ctx.lineWidth = 1;
+      const dl = halfDividerCoords(p.shape);
+      ctx.beginPath(); ctx.moveTo(x + dl.x1, y + dl.y1); ctx.lineTo(x + dl.x2, y + dl.y2); ctx.stroke();
+      ctx.restore();
+    }
+
+    // Quarter dividers
+    if (p.fillMode === 'quartered') {
+      ctx.save(); ctx.strokeStyle = 'rgba(26,35,50,0.3)'; ctx.lineWidth = 1;
+      quarterDividerCoords(p.shape).forEach(dl => {
+        ctx.beginPath(); ctx.moveTo(x + dl.x1, y + dl.y1); ctx.lineTo(x + dl.x2, y + dl.y2); ctx.stroke();
+      });
+      ctx.restore();
+    }
+
+    // Deceased line
+    if (p.deceased) {
+      const dl = deceasedLineCoords(p.shape);
+      ctx.beginPath(); ctx.moveTo(x + dl.x1, y + dl.y1); ctx.lineTo(x + dl.x2, y + dl.y2); ctx.stroke();
+    }
+
+    // Center text
+    if (p.centerText) {
+      ctx.save();
+      ctx.fillStyle = (p.fillMode === 'solid' && p.fillColor && !isLight(p.fillColor)) ? '#fff' : STROKE_COLOR;
+      if (p.centerText === 'dot') {
+        ctx.beginPath(); ctx.arc(cx, y + centerTextY(p.shape), 5, 0, Math.PI * 2); ctx.fill();
+      } else {
+        ctx.font = 'bold 16px -apple-system, sans-serif';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(p.centerText, cx, y + centerTextY(p.shape));
+      }
+      ctx.restore();
+    }
+    ctx.restore();
+
+    // Proband arrow
+    if (p.proband) {
+      ctx.save(); ctx.strokeStyle = STROKE_COLOR; ctx.lineWidth = 1.8;
+      ctx.beginPath(); ctx.moveTo(x - 16, y + 70); ctx.lineTo(x - 2, y + 56); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x - 2, y + 56); ctx.lineTo(x - 9, y + 56); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x - 2, y + 56); ctx.lineTo(x - 2, y + 63); ctx.stroke();
+      ctx.restore();
+    }
+
+    // Number label
+    const numEl = p.el.querySelector('.person-number');
+    if (numEl && numEl.textContent) {
+      ctx.fillStyle = '#6b7a8d'; ctx.font = 'bold 9px ' + FONT;
+      const hasChildLine = childLinks.some(cl => cl.childId === p.id);
+      const twinLink = twinLinks.find(t => t.child1Id === p.id || t.child2Id === p.id);
+      if (twinLink) {
+        const otherId = twinLink.child1Id === p.id ? twinLink.child2Id : twinLink.child1Id;
+        const other = persons.get(otherId);
+        const isRightTwin = other && x > parseFloat(other.el.style.left);
+        ctx.textAlign = isRightTwin ? 'left' : 'right'; ctx.textBaseline = 'bottom';
+        ctx.fillText(numEl.textContent, isRightTwin ? x + SHAPE_SIZE + 2 : x - 2, y - 4);
+      } else if (hasChildLine) {
+        ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+        ctx.fillText(numEl.textContent, x - 2, y - 4);
+      } else {
+        ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+        ctx.fillText(numEl.textContent, cx, y - 4);
+      }
+    }
+
+    // Text annotation
+    if (p.text) {
+      let isLeftPartner = false;
+      partnerships.forEach(ps => {
+        if (ps.fromId === p.id || ps.toId === p.id) {
+          const otherId = ps.fromId === p.id ? ps.toId : ps.fromId;
+          const other = persons.get(otherId);
+          if (other && x < parseFloat(other.el.style.left)) isLeftPartner = true;
+        }
+      });
+      ctx.fillStyle = STROKE_COLOR; ctx.font = '11px ' + FONT; ctx.textBaseline = 'top';
+      if (isLeftPartner) {
+        // Mirrors the default x + 30: ends 30px in from the shape's right edge (matches .text-left).
+        ctx.textAlign = 'right';
+        const textY = p.proband ? y + 74 : y + 56;
+        p.text.split('\n').forEach((line, i) => { ctx.fillText(line, x + SHAPE_SIZE - 30, textY + i * 15); });
+      } else {
+        ctx.textAlign = 'left';
+        p.text.split('\n').forEach((line, i) => { ctx.fillText(line, x + 30, y + 56 + i * 15); });
+      }
+    }
+
+    // Miscarriage sex label
+    if (p.shape === 'miscarriage' && p.miscarriageSex && p.miscarriageSex !== 'unknown') {
+      ctx.fillStyle = '#6b7a8d'; ctx.font = 'bold 9px -apple-system, sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      ctx.fillText(p.miscarriageSex, cx, y + 58);
+    }
+  });
+
+  // ── Draw labels ──
+  labels.forEach(l => {
+    const x = parseFloat(l.el.style.left), y = parseFloat(l.el.style.top);
+    const text = l.el.querySelector('.label-text')?.innerText || '';
+    const fontSize = parseInt(l.el.style.fontSize) || 14;
+    ctx.font = 'italic ' + fontSize + 'px Georgia, "Times New Roman", serif';
+    ctx.textBaseline = 'top'; ctx.textAlign = 'left';
+    const lines = text.split('\n');
+    const lineHeight = fontSize * 1.3;
+    const padding = l.bordered ? 8 : 0;
+    const textX = x + 8 + padding, textY = y + 4 + padding;
+
+    if (l.bordered) {
+      let maxWidth = 0;
+      lines.forEach(line => { const lw = ctx.measureText(line).width; if (lw > maxWidth) maxWidth = lw; });
+      const boxW = maxWidth + 16 + padding * 2, boxH = lines.length * lineHeight + 8 + padding * 2;
+      ctx.save(); ctx.strokeStyle = '#6b7a8d'; ctx.lineWidth = 1.5;
+      const bx = x + 4, by2 = y, br = 4;
+      ctx.beginPath();
+      ctx.moveTo(bx + br, by2); ctx.lineTo(bx + boxW - br, by2); ctx.quadraticCurveTo(bx + boxW, by2, bx + boxW, by2 + br);
+      ctx.lineTo(bx + boxW, by2 + boxH - br); ctx.quadraticCurveTo(bx + boxW, by2 + boxH, bx + boxW - br, by2 + boxH);
+      ctx.lineTo(bx + br, by2 + boxH); ctx.quadraticCurveTo(bx, by2 + boxH, bx, by2 + boxH - br);
+      ctx.lineTo(bx, by2 + br); ctx.quadraticCurveTo(bx, by2, bx + br, by2);
+      ctx.closePath(); ctx.stroke(); ctx.restore();
+    }
+    ctx.fillStyle = '#6b7a8d';
+    lines.forEach((line, i) => { ctx.fillText(line, textX, textY + i * lineHeight); });
+  });
+
+  // ── Draw legend ──
+  const totalLegendItems = legendColors.length + legendShadings.length;
+  if (legendVisible && totalLegendItems > 0) {
+    const lx = legendX, ly = legendY, lw = 200, rowH = 24;
+    const totalH = totalLegendItems * rowH + 30;
+    ctx.save(); ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#dde1e6'; ctx.lineWidth = 1.5;
+    const br = 8;
+    ctx.beginPath();
+    ctx.moveTo(lx + br, ly); ctx.lineTo(lx + lw - br, ly); ctx.quadraticCurveTo(lx + lw, ly, lx + lw, ly + br);
+    ctx.lineTo(lx + lw, ly + totalH - br); ctx.quadraticCurveTo(lx + lw, ly + totalH, lx + lw - br, ly + totalH);
+    ctx.lineTo(lx + br, ly + totalH); ctx.quadraticCurveTo(lx, ly + totalH, lx, ly + totalH - br);
+    ctx.lineTo(lx, ly + br); ctx.quadraticCurveTo(lx, ly, lx + br, ly);
+    ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
+    ctx.fillStyle = '#6b7a8d'; ctx.font = 'bold 10px ' + FONT; ctx.textBaseline = 'top'; ctx.textAlign = 'left';
+    ctx.fillText('KEY', lx + 12, ly + 10);
+    let legendIdx = 0;
+    legendColors.forEach((lc) => {
+      const ry = ly + 28 + legendIdx * rowH;
+      ctx.fillStyle = lc.color; ctx.fillRect(lx + 12, ry, 16, 16);
+      ctx.strokeStyle = '#dde1e6'; ctx.lineWidth = 1; ctx.strokeRect(lx + 12, ry, 16, 16);
+      ctx.fillStyle = STROKE_COLOR; ctx.font = '11px ' + FONT;
+      ctx.fillText(lc.label || '(unlabelled)', lx + 36, ry + 2);
+      legendIdx++;
+    });
+    legendShadings.forEach((sh) => {
+      const ry = ly + 28 + legendIdx * rowH;
+      // Draw shading pattern swatch
+      const swX = lx + 12, swY = ry, swW = 16, swH = 16;
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(swX, swY, swW, swH);
+      const patCanvas = document.createElement('canvas');
+      const patCtx = patCanvas.getContext('2d');
+      if (sh.pattern === 'dots') {
+        patCanvas.width = 6; patCanvas.height = 6;
+        patCtx.fillStyle = STROKE_COLOR;
+        patCtx.beginPath(); patCtx.arc(3, 3, 1.2, 0, Math.PI * 2); patCtx.fill();
+      } else {
+        patCanvas.width = 5; patCanvas.height = 5;
+        patCtx.strokeStyle = STROKE_COLOR; patCtx.lineWidth = 1.4;
+        patCtx.beginPath(); patCtx.moveTo(-2, 5); patCtx.lineTo(5, -2); patCtx.stroke();
+        patCtx.beginPath(); patCtx.moveTo(-2 + 5, 5); patCtx.lineTo(5 + 5, -2); patCtx.stroke();
+        patCtx.beginPath(); patCtx.moveTo(-2 - 5, 5); patCtx.lineTo(5 - 5, -2); patCtx.stroke();
+      }
+      const swPat = ctx.createPattern(patCanvas, 'repeat');
+      if (sh.coverage === 'full') {
+        ctx.fillStyle = swPat; ctx.fillRect(swX, swY, swW, swH);
+      } else if (sh.coverage === 'half-left') {
+        ctx.fillStyle = swPat; ctx.fillRect(swX, swY, swW / 2, swH);
+      } else {
+        ctx.fillStyle = swPat; ctx.fillRect(swX + swW / 2, swY, swW / 2, swH);
+      }
+      ctx.strokeStyle = '#dde1e6'; ctx.lineWidth = 1; ctx.strokeRect(swX, swY, swW, swH);
+      ctx.fillStyle = STROKE_COLOR; ctx.font = '11px ' + FONT;
+      ctx.fillText(sh.label || '(unlabelled)', lx + 36, ry + 2);
+      legendIdx++;
+    });
+  }
+
+  // ── Draw freehand strokes (on top of everything) ──
+  drawStrokes.forEach(s => {
+    if (s.points.length < 2) return;
+    ctx.save();
+    ctx.strokeStyle = s.color;
+    ctx.lineWidth = s.width;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(s.points[0].x, s.points[0].y);
+    for (let i = 1; i < s.points.length; i++) ctx.lineTo(s.points[i].x, s.points[i].y);
+    ctx.stroke();
+    ctx.restore();
+  });
+
+  try {
+    const link = document.createElement('a');
+    link.download = 'pedigree.png';
+    link.href = c.toDataURL('image/png');
+    link.click();
+    document.getElementById('statusBar').textContent = 'Image exported!';
+  } catch (err) { document.getElementById('statusBar').textContent = 'Error exporting image'; }
+}
+
+// ══════════════════════════
+// SVG EXPORT (uses shared geometry — no duplication)
+// ══════════════════════════
+
+function buildPedigreeSVG() {
+  if (persons.size === 0 && labels.size === 0 && drawStrokes.length === 0) return null;
+
+  const { minX, minY, maxX, maxY, legendColors, legendShadings } = computeExportBounds();
+  const w = maxX - minX, h = maxY - minY;
+  const FONT = "-apple-system, 'Segoe UI', system-ui, Helvetica, sans-serif";
+
+  // Collect SVG elements as strings
+  const els = [];
+
+  // Helper: escape text for SVG
+  function esc(t) { return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  // Helper: SVG line element
+  function svgLine(x1,y1,x2,y2,stroke,sw,opacity) {
+    return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${stroke}" stroke-width="${sw}"${opacity ? ' opacity="'+opacity+'"' : ''}/>`;
+  }
+
+  // White background
+  els.push(`<rect x="${minX}" y="${minY}" width="${w}" height="${h}" fill="#ffffff"/>`);
+
+  // ── Pre-compute all geometries for crossing detection ──
+  const svgPshipGeoms = [];
+  partnerships.forEach(pship => {
+    const fromP = persons.get(pship.fromId), toP = persons.get(pship.toId);
+    if (!fromP || !toP) return;
+    const fc = getPersonCenter(fromP), tc = getPersonCenter(toP);
+    const geom = computePartnershipGeom(fc.x, fc.y, tc.x, tc.y, pship.type);
+    svgPshipGeoms.push({ pship, geom });
+  });
+
+  const svgClPaths = [];
+  childLinks.forEach(cl => {
+    const pship = partnerships.find(p2 => p2.id === cl.partnershipId);
+    const child = persons.get(cl.childId);
+    if (!pship || !child) return;
+    const fromP = persons.get(pship.fromId), toP = persons.get(pship.toId);
+    if (!fromP || !toP) return;
+    const fc = getPersonCenter(fromP), tc = getPersonCenter(toP);
+    const midX = (fc.x + tc.x) / 2, midY = (fc.y + tc.y) / 2;
+    const childCenter = getPersonCenter(child);
+    const childTop = parseFloat(child.el.style.top);
+    const siblingIds = childLinks.filter(c2 => c2.partnershipId === cl.partnershipId).map(c2 => c2.childId);
+    const twinLink = twinLinks.find(t => t.child1Id === cl.childId || t.child2Id === cl.childId);
+    let twinInfo = null;
+    if (twinLink) {
+      const otherId = twinLink.child1Id === cl.childId ? twinLink.child2Id : twinLink.child1Id;
+      const otherChild = persons.get(otherId);
+      if (otherChild) twinInfo = { otherCenterX: getPersonCenter(otherChild).x, otherTop: parseFloat(otherChild.el.style.top) };
+    }
+    const siblingTops = siblingIds
+      .filter(id => { const p2 = persons.get(id); return p2 && !p2.noSnap && id !== cl.childId; })
+      .map(id => parseFloat(persons.get(id).el.style.top));
+    svgClPaths.push({ cl, d: computeChildLinkD(midX, midY, childCenter.x, childTop, child.noSnap, siblingTops, twinInfo, cl.branchYOffset || 0) });
+  });
+
+  // Collect segments and find crossings
+  const svgSegs = [];
+  svgClPaths.forEach(item => {
+    const pts = parsePathPoints(item.d);
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1];
+      if (Math.abs(a.y - b.y) < 0.5) svgSegs.push({ type: 'h', y: a.y, x1: Math.min(a.x, b.x), x2: Math.max(a.x, b.x), src: item.cl.id, fam: item.cl.partnershipId });
+      else if (Math.abs(a.x - b.x) < 0.5) svgSegs.push({ type: 'v', x: a.x, y1: Math.min(a.y, b.y), y2: Math.max(a.y, b.y), src: item.cl.id, fam: item.cl.partnershipId });
+    }
+  });
+  svgPshipGeoms.forEach(item => {
+    const g = item.geom;
+    if (Math.abs(g.y1 - g.y2) < 0.5) svgSegs.push({ type: 'h', y: g.y1, x1: Math.min(g.x1, g.x2), x2: Math.max(g.x1, g.x2), src: item.pship.id, fam: item.pship.id });
+    else if (Math.abs(g.x1 - g.x2) < 0.5) svgSegs.push({ type: 'v', x: g.x1, y1: Math.min(g.y1, g.y2), y2: Math.max(g.y1, g.y2), src: item.pship.id, fam: item.pship.id });
+  });
+  const svgCrossings = findLineCrossings(svgSegs);
+  const svgByV = new Map();
+  svgCrossings.forEach(c => { if (!svgByV.has(c.vSrc)) svgByV.set(c.vSrc, []); svgByV.get(c.vSrc).push({ cx: c.cx, cy: c.cy, hSrc: c.hSrc }); });
+  svgByV.forEach((pts, key) => svgByV.set(key, mergeNearbyCrossings(pts)));
+
+  // ── Partnerships ──
+  svgPshipGeoms.forEach(item => {
+    const g = item.geom;
+    els.push(svgLine(g.x1, g.y1, g.x2, g.y2, STROKE_COLOR, STROKE_W));
+    if (g.consang) els.push(svgLine(g.consang.x1, g.consang.y1, g.consang.x2, g.consang.y2, STROKE_COLOR, STROKE_W));
+    if (g.slashLines) g.slashLines.forEach(sl => els.push(svgLine(sl.x1, sl.y1, sl.x2, sl.y2, STROKE_COLOR, STROKE_W)));
+    const pPts = svgByV.get(item.pship.id);
+    if (pPts && pPts.length > 0) {
+      const bd = buildLineBridgeD(g.x1, g.y1, g.x2, g.y2, pPts.map(c => c.cy));
+      if (bd) {
+        els.push(`<path d="${bd}" stroke="#ffffff" stroke-width="${STROKE_W + 4}" fill="none"/>`);
+        els.push(`<path d="${bd}" stroke="${STROKE_COLOR}" stroke-width="${STROKE_W}" fill="none"/>`);
+      }
+    }
+  });
+
+  // ── Child links ──
+  svgClPaths.forEach(item => {
+    const pts = svgByV.get(item.cl.id);
+    const d = (pts && pts.length > 0) ? rebuildPathWithBridges(item.d, pts) : item.d;
+    const dashAttr = item.cl.dashed ? ' stroke-dasharray="6 4"' : '';
+    els.push(`<path d="${d}" stroke="${STROKE_COLOR}" stroke-width="${STROKE_W}" fill="none"${dashAttr}/>`);
+  });
+
+  // ── Twin bars ──
+  twinLinks.forEach(tl => {
+    const c1 = persons.get(tl.child1Id), c2 = persons.get(tl.child2Id);
+    if (!c1 || !c2) return;
+    const pship = partnerships.find(p2 => p2.id === tl.partnershipId);
+    if (!pship) return;
+    const fp = persons.get(pship.fromId), tp = persons.get(pship.toId);
+    if (!fp || !tp) return;
+    const fc = getPersonCenter(fp), tc = getPersonCenter(tp);
+    const midY = (fc.y + tc.y) / 2;
+    const cc1 = getPersonCenter(c1), cc2 = getPersonCenter(c2);
+    const c1Top = parseFloat(c1.el.style.top), c2Top = parseFloat(c2.el.style.top);
+    const forkX = (cc1.x + cc2.x) / 2;
+    const branchY = Math.max(midY + 4, (c1Top + c2Top) / 2 - SHAPE_HALF);
+    const d = computeTwinBarD(tl.type, forkX, branchY, cc1.x, cc2.x, c1Top, c2Top);
+    if (d) els.push(`<path d="${d}" stroke="${STROKE_COLOR}" stroke-width="${STROKE_W}" fill="none"/>`);
+  });
+
+  // ── Persons ──
+  persons.forEach(p => {
+    const x = parseFloat(p.el.style.left), y = parseFloat(p.el.style.top);
+    const cx = x + SHAPE_HALF, cy = y + SHAPE_HALF;
+    const g = []; // group elements for this person
+
+    // Fill
+    if (p.fillMode === 'solid' && p.fillColor) {
+      g.push(`<path d="${shapePathD(p.shape)}" fill="${p.fillColor}" stroke="none" transform="translate(${x},${y})"/>`);
+    } else if (p.fillMode === 'half') {
+      const hDs = halfPathDs(p.shape);
+      hDs.forEach((hd, i) => {
+        g.push(`<path d="${hd}" fill="${p.halves[i] || '#ffffff'}" stroke="none" transform="translate(${x},${y})"/>`);
+      });
+    } else if (p.fillMode === 'quartered') {
+      const qDs = quarterPathDs(p.shape);
+      qDs.forEach((qd, i) => {
+        g.push(`<path d="${qd}" fill="${p.quarters[i] || '#ffffff'}" stroke="none" transform="translate(${x},${y})"/>`);
+      });
+    } else if (p.fillMode === 'shading') {
+      const sPat = p.shadingPattern || 'stripes';
+      const sCov = p.shadingCoverage || 'full';
+      const patId = 'exp-pat-' + p.id;
+      let patDef = '';
+      if (sPat === 'dots') {
+        patDef = `<pattern id="${patId}" patternUnits="userSpaceOnUse" width="8" height="8"><circle cx="4" cy="4" r="1.6" fill="${STROKE_COLOR}"/></pattern>`;
+      } else {
+        patDef = `<pattern id="${patId}" patternUnits="userSpaceOnUse" width="7" height="7" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="7" stroke="${STROKE_COLOR}" stroke-width="1.8"/></pattern>`;
+      }
+      if (sCov === 'full') {
+        const clipId = patId + '-c';
+        g.push(`<defs>${patDef}<clipPath id="${clipId}"><path d="${shapePathD(p.shape)}" transform="translate(${x},${y})"/></clipPath></defs>`);
+        g.push(`<path d="${shapePathD(p.shape)}" fill="#ffffff" stroke="none" transform="translate(${x},${y})"/>`);
+        g.push(`<rect x="${x}" y="${y}" width="52" height="52" fill="url(#${patId})" clip-path="url(#${clipId})"/>`);
+      } else {
+        const hDs = halfPathDs(p.shape);
+        const shadedIdx = sCov === 'half-left' ? 0 : 1;
+        const clearIdx = sCov === 'half-left' ? 1 : 0;
+        const clipId = patId + '-c';
+        g.push(`<defs>${patDef}<clipPath id="${clipId}"><path d="${hDs[shadedIdx]}" transform="translate(${x},${y})"/></clipPath></defs>`);
+        g.push(`<path d="${hDs[clearIdx]}" fill="#ffffff" stroke="none" transform="translate(${x},${y})"/>`);
+        g.push(`<path d="${hDs[shadedIdx]}" fill="#ffffff" stroke="none" transform="translate(${x},${y})"/>`);
+        g.push(`<rect x="${x}" y="${y}" width="52" height="52" fill="url(#${patId})" clip-path="url(#${clipId})"/>`);
+        const dl = halfDividerCoords(p.shape);
+        g.push(svgLine(x + dl.x1, y + dl.y1, x + dl.x2, y + dl.y2, STROKE_COLOR, 1, 0.3));
+      }
+    } else {
+      if (!isLineShape(p.shape)) g.push(`<path d="${shapePathD(p.shape)}" fill="#ffffff" stroke="none" transform="translate(${x},${y})"/>`);
+    }
+
+    // Border
+    g.push(`<path d="${shapePathD(p.shape)}" fill="none" stroke="${STROKE_COLOR}" stroke-width="${STROKE_W}" transform="translate(${x},${y})"/>`);
+
+    // Adopted brackets
+    if (isAdoptedShape(p.shape)) {
+      g.push(`<path d="${BRACKET_LEFT_D}" fill="none" stroke="${STROKE_COLOR}" stroke-width="${STROKE_W}" transform="translate(${x},${y})"/>`);
+      g.push(`<path d="${BRACKET_RIGHT_D}" fill="none" stroke="${STROKE_COLOR}" stroke-width="${STROKE_W}" transform="translate(${x},${y})"/>`);
+    }
+    // Half divider
+    if (p.fillMode === 'half') {
+      const dl = halfDividerCoords(p.shape);
+      g.push(svgLine(x + dl.x1, y + dl.y1, x + dl.x2, y + dl.y2, STROKE_COLOR, 1, 0.3));
+    }
+
+    // Quarter dividers
+    if (p.fillMode === 'quartered') {
+      quarterDividerCoords(p.shape).forEach(dl => {
+        g.push(svgLine(x + dl.x1, y + dl.y1, x + dl.x2, y + dl.y2, STROKE_COLOR, 1, 0.3));
+      });
+    }
+
+    // Deceased line
+    if (p.deceased) {
+      const dl = deceasedLineCoords(p.shape);
+      g.push(svgLine(x + dl.x1, y + dl.y1, x + dl.x2, y + dl.y2, STROKE_COLOR, STROKE_W));
+    }
+
+    // Center text
+    if (p.centerText) {
+      const tc = (p.fillMode === 'solid' && p.fillColor && !isLight(p.fillColor)) ? '#fff' : STROKE_COLOR;
+      if (p.centerText === 'dot') {
+        g.push(`<circle cx="${cx}" cy="${y + centerTextY(p.shape)}" r="5" fill="${tc}"/>`);
+      } else {
+        g.push(`<text x="${cx}" y="${y + centerTextY(p.shape)}" text-anchor="middle" dominant-baseline="central" font-size="16" font-weight="700" fill="${tc}" font-family="${FONT}">${esc(p.centerText)}</text>`);
+      }
+    }
+
+    // Proband arrow
+    if (p.proband) {
+      g.push(`<path d="M${x-16} ${y+70}L${x-2} ${y+56} M${x-2} ${y+56}L${x-9} ${y+56} M${x-2} ${y+56}L${x-2} ${y+63}" stroke="${STROKE_COLOR}" stroke-width="1.8" fill="none"/>`);
+    }
+
+    // Number label
+    const numEl = p.el.querySelector('.person-number');
+    if (numEl && numEl.textContent) {
+      const hasChildLine = childLinks.some(cl => cl.childId === p.id);
+      const twinLink = twinLinks.find(t => t.child1Id === p.id || t.child2Id === p.id);
+      let anchor = 'middle', nx = cx, ny = y - 5;
+      if (twinLink) {
+        const otherId = twinLink.child1Id === p.id ? twinLink.child2Id : twinLink.child1Id;
+        const other = persons.get(otherId);
+        const isRightTwin = other && x > parseFloat(other.el.style.left);
+        anchor = isRightTwin ? 'start' : 'end';
+        nx = isRightTwin ? x + SHAPE_SIZE + 2 : x - 2;
+      } else if (hasChildLine) {
+        anchor = 'end'; nx = x - 2;
+      }
+      g.push(`<text x="${nx}" y="${ny}" text-anchor="${anchor}" font-size="9" font-weight="700" fill="#6b7a8d" font-family="${FONT}">${esc(numEl.textContent)}</text>`);
+    }
+
+    // Text annotation
+    if (p.text) {
+      let isLeftPartner = false;
+      partnerships.forEach(ps => {
+        if (ps.fromId === p.id || ps.toId === p.id) {
+          const otherId = ps.fromId === p.id ? ps.toId : ps.fromId;
+          const other = persons.get(otherId);
+          if (other && x < parseFloat(other.el.style.left)) isLeftPartner = true;
+        }
+      });
+      const lines = p.text.split('\n');
+      if (isLeftPartner) {
+        // Mirrors the default x + 30: ends 30px in from the shape's right edge (matches .text-left).
+        const baseY = p.proband ? y + 74 : y + 56;
+        lines.forEach((line, i) => {
+          g.push(`<text x="${x + SHAPE_SIZE - 30}" y="${baseY + i * 15}" text-anchor="end" dominant-baseline="hanging" font-size="11" fill="${STROKE_COLOR}" font-family="${FONT}">${esc(line)}</text>`);
+        });
+      } else {
+        lines.forEach((line, i) => {
+          g.push(`<text x="${x + 30}" y="${y + 56 + i * 15}" text-anchor="start" dominant-baseline="hanging" font-size="11" fill="${STROKE_COLOR}" font-family="${FONT}">${esc(line)}</text>`);
+        });
+      }
+    }
+
+    // Miscarriage sex label
+    if (p.shape === 'miscarriage' && p.miscarriageSex && p.miscarriageSex !== 'unknown') {
+      g.push(`<text x="${cx}" y="${y + 58}" text-anchor="middle" dominant-baseline="hanging" font-size="9" font-weight="700" fill="#6b7a8d" font-family="${FONT}">${esc(p.miscarriageSex)}</text>`);
+    }
+
+    els.push(g.join('\n'));
+  });
+
+  // ── Labels ──
+  labels.forEach(l => {
+    const x = parseFloat(l.el.style.left), y = parseFloat(l.el.style.top);
+    const text = l.el.querySelector('.label-text')?.innerText || '';
+    const fontSize = parseInt(l.el.style.fontSize) || 14;
+    const lines = text.split('\n');
+    const lineHeight = fontSize * 1.3;
+    const padding = l.bordered ? 8 : 0;
+    const textX = x + 8 + padding, textY = y + 4 + padding;
+
+    if (l.bordered) {
+      // Estimate width: ~7px per char at 14px font, scale proportionally
+      let maxWidth = 0;
+      // Use a temporary canvas to measure text widths for SVG
+      const measureCanvas = document.createElement('canvas').getContext('2d');
+      measureCanvas.font = 'italic ' + fontSize + 'px Georgia, "Times New Roman", serif';
+      lines.forEach(line => { const lw = measureCanvas.measureText(line).width; if (lw > maxWidth) maxWidth = lw; });
+      const boxW = maxWidth + 16 + padding * 2, boxH = lines.length * lineHeight + 8 + padding * 2;
+      els.push(`<rect x="${x + 4}" y="${y}" width="${boxW}" height="${boxH}" rx="4" ry="4" fill="none" stroke="#6b7a8d" stroke-width="1.5"/>`);
+    }
+
+    lines.forEach((line, i) => {
+      els.push(`<text x="${textX}" y="${textY + i * lineHeight + fontSize * 0.8}" text-anchor="start" font-size="${fontSize}" font-style="italic" fill="#6b7a8d" font-family="Georgia, 'Times New Roman', serif">${esc(line)}</text>`);
+    });
+  });
+
+  // ── Legend ──
+  const totalSvgLegendItems = legendColors.length + legendShadings.length;
+  if (legendVisible && totalSvgLegendItems > 0) {
+    const lx = legendX, ly = legendY, lw = 200, rowH = 24;
+    const totalH = totalSvgLegendItems * rowH + 30;
+    els.push(`<rect x="${lx}" y="${ly}" width="${lw}" height="${totalH}" rx="8" ry="8" fill="#ffffff" stroke="#dde1e6" stroke-width="1.5"/>`);
+    els.push(`<text x="${lx + 12}" y="${ly + 18}" text-anchor="start" font-size="10" font-weight="700" fill="#6b7a8d" font-family="${FONT}">KEY</text>`);
+    let svgLegIdx = 0;
+    legendColors.forEach((lc) => {
+      const ry = ly + 28 + svgLegIdx * rowH;
+      els.push(`<rect x="${lx + 12}" y="${ry}" width="16" height="16" fill="${lc.color}" stroke="#dde1e6" stroke-width="1"/>`);
+      els.push(`<text x="${lx + 36}" y="${ry + 12}" text-anchor="start" dominant-baseline="central" font-size="11" fill="${STROKE_COLOR}" font-family="${FONT}">${esc(lc.label || '(unlabelled)')}</text>`);
+      svgLegIdx++;
+    });
+    legendShadings.forEach((sh) => {
+      const ry = ly + 28 + svgLegIdx * rowH;
+      const spId = 'leg-exp-' + svgLegIdx;
+      let patDef = '';
+      if (sh.pattern === 'dots') {
+        patDef = `<pattern id="${spId}" patternUnits="userSpaceOnUse" width="6" height="6"><circle cx="3" cy="3" r="1.2" fill="${STROKE_COLOR}"/></pattern>`;
+      } else {
+        patDef = `<pattern id="${spId}" patternUnits="userSpaceOnUse" width="5" height="5" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="5" stroke="${STROKE_COLOR}" stroke-width="1.4"/></pattern>`;
+      }
+      let fillRect = '';
+      if (sh.coverage === 'full') {
+        fillRect = `<rect x="${lx + 12}" y="${ry}" width="16" height="16" fill="url(#${spId})"/>`;
+      } else if (sh.coverage === 'half-left') {
+        fillRect = `<rect x="${lx + 12}" y="${ry}" width="8" height="16" fill="url(#${spId})"/><rect x="${lx + 20}" y="${ry}" width="8" height="16" fill="#fff"/>`;
+      } else {
+        fillRect = `<rect x="${lx + 12}" y="${ry}" width="8" height="16" fill="#fff"/><rect x="${lx + 20}" y="${ry}" width="8" height="16" fill="url(#${spId})"/>`;
+      }
+      els.push(`<defs>${patDef}</defs>`);
+      els.push(fillRect);
+      els.push(`<rect x="${lx + 12}" y="${ry}" width="16" height="16" fill="none" stroke="#dde1e6" stroke-width="1"/>`);
+      els.push(`<text x="${lx + 36}" y="${ry + 12}" text-anchor="start" dominant-baseline="central" font-size="11" fill="${STROKE_COLOR}" font-family="${FONT}">${esc(sh.label || '(unlabelled)')}</text>`);
+      svgLegIdx++;
+    });
+  }
+
+  // ── Freehand draw strokes (on top of everything) ──
+  drawStrokes.forEach(s => {
+    if (s.points.length < 2) return;
+    els.push(`<path d="${buildStrokePathD(s.points)}" stroke="${esc(s.color)}" stroke-width="${s.width}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`);
+  });
+
+  // ── Assemble SVG document ──
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="${minX} ${minY} ${w} ${h}" width="${w}" height="${h}">
+${els.join('\n')}
+</svg>`;
+}
+
+function saveAsSVG() {
+  document.getElementById('statusBar').textContent = 'Generating SVG…';
+  deselectAll();
+  const svg = buildPedigreeSVG();
+  if (!svg) { document.getElementById('statusBar').textContent = 'Nothing to export'; return; }
+
+  try {
+    const blob = new Blob([svg], { type: 'image/svg+xml' });
+    const link = document.createElement('a');
+    link.download = 'pedigree.svg';
+    link.href = URL.createObjectURL(blob);
+    link.click();
+    URL.revokeObjectURL(link.href);
+    document.getElementById('statusBar').textContent = 'SVG exported!';
+  } catch (err) { document.getElementById('statusBar').textContent = 'Error exporting SVG'; }
+}
+
+// ── Auto-restore ──
+function tryAutoRestore() {
+  try {
+    const saved = localStorage.getItem(PS_SESSION_KEY);
+    if (saved) {
+      const data = JSON.parse(saved);
+      restoreSession(data);
+      document.getElementById('splashOverlay').classList.add('hidden');
+      document.getElementById('statusBar').textContent = 'Previous session restored';
+      return true;
+    }
+  } catch(e) { console.error('Auto-restore failed:', e); }
+  return false;
+}
+
+
+// ── Redistribute Engine (constrained clinical pedigree layout) ──
+
+function redistributePedigreeWithWarning() {
+  const ok = window.confirm(
+    'Redistribute the pedigree automatically?\n\n' +
+    'This uses a clinical-pedigree layout: generations are layered, partners are kept adjacent, children are centred under the parental partnership, sibling order is preserved where possible, and free-position / no-snap people are treated as fixed boundary pins.\n\n' +
+    'This may move many shapes. Use Undo if you do not like the result.'
+  );
+  if (!ok) return;
+
+  if (typeof pushUndo === 'function') pushUndo();
+
+  const previousIndividualMoveMode = individualMoveMode;
+  individualMoveMode = false;
+  try {
+    runManagedPedigreeLayout({
+      seedIds: Array.from(persons.keys()),
+      reason: 'manualRedistribute',
+      fromButton: true,
+      fresh: true
+    });
+  } finally {
+    individualMoveMode = previousIndividualMoveMode;
+  }
+
+  const status = document.getElementById('statusBar');
+  if (status) status.textContent = 'Pedigree redistributed with constrained clinical layout';
+}
+
+// The layout below is intentionally independent of SVG drawing.  It only writes
+// person x/y positions; the existing updateAllConnections(), updateNumbering(),
+// line-bridge, twin, adoption/dashed-line and export code then redraw normally.
+// Algorithmic model:
+//   individual nodes + virtual family/partnership nodes
+//   topological generation ranks
+//   Sugiyama-style barycentric row ordering
+//   branch-width-aware child placement
+//   fixed-pin/noSnap handling
+//   final hard guards for symbol overlap and partnership-line corridors
+
+function managedGetLeft(p) { return parseFloat(p?.el?.style?.left) || 0; }
+function managedGetTop(p) { return parseFloat(p?.el?.style?.top) || 0; }
+
+function managedSetPersonPos(personData, x, y) {
+  if (!personData || !personData.el || !isFinite(x) || !isFinite(y)) return;
+  personData.el.style.left = Math.round(x * 10) / 10 + 'px';
+  personData.el.style.top = Math.round(y * 10) / 10 + 'px';
+  personData.x = Math.round(x * 10) / 10;
+  personData.y = Math.round(y * 10) / 10;
+}
+
+function managedAverage(values) {
+  const clean = (values || []).filter(v => isFinite(v));
+  return clean.length ? clean.reduce((a, b) => a + b, 0) / clean.length : 0;
+}
+
+function managedMedian(values) {
+  const clean = (values || []).filter(v => isFinite(v)).sort((a, b) => a - b);
+  if (!clean.length) return 0;
+  const mid = Math.floor(clean.length / 2);
+  return clean.length % 2 ? clean[mid] : (clean[mid - 1] + clean[mid]) / 2;
+}
+
+function syncPersonDataFromDom() {
+  persons.forEach(p => {
+    if (!p || !p.el) return;
+    p.x = managedGetLeft(p);
+    p.y = managedGetTop(p);
+  });
+}
+
+function studioLayoutCenterGap() {
+  return Math.max(SHAPE_SIZE + 34, partnerGap || SHAPE_SIZE * 2);
+}
+
+function studioLayoutBranchGap() {
+  return Math.max(28, Math.min(studioLayoutCenterGap() * 0.45, SHAPE_SIZE * 1.4));
+}
+
+function studioPersonSexClass(p) {
+  const shape = (p && p.shape) || '';
+  if (shape === 'male' || shape === 'adopted-male') return 'male';
+  if (shape === 'female' || shape === 'adopted-female') return 'female';
+  return 'unknown';
+}
+
+function studioSortPeopleByOldPosition(a, b) {
+  return ((a?.oldX ?? a?.x ?? 0) - (b?.oldX ?? b?.x ?? 0)) ||
+         ((a?.oldY ?? a?.y ?? 0) - (b?.oldY ?? b?.y ?? 0)) ||
+         String(a?.id || '').localeCompare(String(b?.id || ''));
+}
+
+function studioOrderedParents(model, fam) {
+  const parents = (fam.parents || []).map(id => model.people.get(id)).filter(Boolean);
+  if (parents.length !== 2) return parents;
+  const a = parents[0], b = parents[1];
+  const sa = studioPersonSexClass(a.data), sb = studioPersonSexClass(b.data);
+  if (sa === 'male' && sb === 'female') return [a, b];
+  if (sa === 'female' && sb === 'male') return [b, a];
+  return parents.slice().sort(studioSortPeopleByOldPosition);
+}
+
+function buildManagedLayoutModel() {
+  const model = { people: new Map(), families: new Map() };
+
+  persons.forEach((p, id) => {
+    const x = managedGetLeft(p), y = managedGetTop(p);
+    model.people.set(id, {
+      id,
+      data: p,
+      oldX: x,
+      oldY: y,
+      x,
+      y,
+      rank: 0,
+      noSnap: !!p.noSnap,
+      partnerFamilies: [],
+      childOfFamilies: []
+    });
+  });
+
+  partnerships.forEach(ps => {
+    if (!model.people.has(ps.fromId) || !model.people.has(ps.toId)) return;
+    const fam = {
+      id: ps.id,
+      partnership: ps,
+      parents: [ps.fromId, ps.toId],
+      children: [],
+      rank: 0,
+      x: managedAverage([model.people.get(ps.fromId).oldX + SHAPE_HALF, model.people.get(ps.toId).oldX + SHAPE_HALF])
+    };
+    model.families.set(ps.id, fam);
+    model.people.get(ps.fromId).partnerFamilies.push(ps.id);
+    model.people.get(ps.toId).partnerFamilies.push(ps.id);
+  });
+
+  childLinks.forEach(cl => {
+    const fam = model.families.get(cl.partnershipId);
+    const child = model.people.get(cl.childId);
+    if (!fam || !child) return;
+    if (!fam.children.includes(cl.childId)) fam.children.push(cl.childId);
+    child.childOfFamilies.push(cl.partnershipId);
+  });
+
+  return model;
+}
+
+function studioMakeDisjointSet(ids) {
+  const parent = new Map(ids.map(id => [id, id]));
+  function find(id) {
+    let p = parent.get(id);
+    if (p === undefined) return id;
+    if (p !== id) { p = find(p); parent.set(id, p); }
+    return p;
+  }
+  function union(a, b) {
+    const ra = find(a), rb = find(b);
+    if (ra !== rb) parent.set(rb, ra);
+  }
+  return { find, union };
+}
+
+function assignManagedRanks(model) {
+  if (studioTryAssignRanks(model, true)) return;
+  if (studioTryAssignRanks(model, false)) return;
+
+  // Last-resort fallback for impossible directed cycles: preserve existing
+  // vertical rows, so the user can still manually resolve the unusual pedigree.
+  const ordered = Array.from(model.people.values()).sort((a, b) => a.oldY - b.oldY || a.oldX - b.oldX);
+  let rank = -1, lastY = null;
+  ordered.forEach(p => {
+    if (lastY === null || Math.abs(p.oldY - lastY) > Math.max(70, SHAPE_SIZE * 1.3)) {
+      rank += 1;
+      lastY = p.oldY;
+    }
+    p.rank = Math.max(0, rank);
+  });
+  model.families.forEach(fam => {
+    fam.rank = Math.max(0, ...fam.parents.map(id => model.people.get(id)?.rank ?? 0));
+  });
+}
+
+function studioTryAssignRanks(model, unionPartners) {
+  const ids = Array.from(model.people.keys());
+  const dsu = studioMakeDisjointSet(ids);
+  if (unionPartners) {
+    const ancestorMemo = new Map();
+    model.families.forEach(fam => {
+      // Protected internal relationship lines (consanguineous, consanguineous-separated,
+      // shared-partner, shared-partner-separated, or an inferred internal kinship link)
+      // are visual/relationship links, not ordinary spouse blocks.  Do not union their
+      // endpoints into one rank group, otherwise a shared partner loop can collapse two
+      // cousin branches into a single synthetic spouse block during Redistribute.
+      if (fam.parents.length === 2 && !studioFamilyIsInternalKinship(model, fam, ancestorMemo)) {
+        dsu.union(fam.parents[0], fam.parents[1]);
+      }
+    });
+  }
+
+  const groups = new Map();
+  ids.forEach(id => {
+    const root = dsu.find(id);
+    if (!groups.has(root)) groups.set(root, { id: root, members: [], rank: 0 });
+    groups.get(root).members.push(id);
+  });
+
+  const edges = new Map(), indegree = new Map();
+  groups.forEach((_, gid) => { edges.set(gid, new Set()); indegree.set(gid, 0); });
+
+  for (const fam of model.families.values()) {
+    for (const parentId of fam.parents) {
+      for (const childId of fam.children) {
+        if (!model.people.has(parentId) || !model.people.has(childId)) continue;
+        const a = dsu.find(parentId), b = dsu.find(childId);
+        if (a === b) return false;
+        if (!edges.get(a).has(b)) {
+          edges.get(a).add(b);
+          indegree.set(b, (indegree.get(b) || 0) + 1);
+        }
+      }
+    }
+  }
+
+  const queue = Array.from(groups.keys())
+    .filter(gid => (indegree.get(gid) || 0) === 0)
+    .sort((a, b) => managedAverage(groups.get(a).members.map(id => model.people.get(id).oldY)) -
+                    managedAverage(groups.get(b).members.map(id => model.people.get(id).oldY)));
+
+  let processed = 0;
+  while (queue.length) {
+    const gid = queue.shift();
+    const group = groups.get(gid);
+    processed += 1;
+    for (const next of edges.get(gid) || []) {
+      const ng = groups.get(next);
+      ng.rank = Math.max(ng.rank, group.rank + 1);
+      indegree.set(next, indegree.get(next) - 1);
+      if (indegree.get(next) === 0) {
+        queue.push(next);
+        queue.sort((a, b) => (groups.get(a).rank - groups.get(b).rank) ||
+                             managedAverage(groups.get(a).members.map(id => model.people.get(id).oldX)) -
+                             managedAverage(groups.get(b).members.map(id => model.people.get(id).oldX)));
+      }
+    }
+  }
+  if (processed !== groups.size) return false;
+
+  groups.forEach(g => g.members.forEach(id => { model.people.get(id).rank = g.rank; }));
+  model.families.forEach(fam => {
+    fam.rank = Math.max(0, ...fam.parents.map(id => model.people.get(id)?.rank ?? 0));
+  });
+  return true;
+}
+
+function studioBuildPersonAdjacency(model) {
+  const adj = new Map();
+  model.people.forEach((_, id) => adj.set(id, new Set()));
+  const ancestorMemo = new Map();
+  model.families.forEach(fam => {
+    const protectedInternal = studioFamilyIsInternalKinship(model, fam, ancestorMemo);
+    // Ordinary partnerships connect the two parents as a spouse block.  Protected
+    // internal links do not: the people are already connected through another path
+    // and the line should not create an extra component/rank/partner constraint.
+    if (!protectedInternal) {
+      fam.parents.forEach(a => fam.parents.forEach(b => { if (a !== b) adj.get(a)?.add(b); }));
+    }
+    // Children still connect to both recorded parents, including children of a
+    // consanguineous/shared-partner family.  This preserves parent-child structure
+    // without turning the protected partner line itself into an ordinary spouse edge.
+    fam.children.forEach(childId => {
+      fam.parents.forEach(parentId => {
+        adj.get(parentId)?.add(childId);
+        adj.get(childId)?.add(parentId);
+      });
+    });
+  });
+  return adj;
+}
+
+function getManagedLayoutComponents(model, seedIds) {
+  const adj = studioBuildPersonAdjacency(model);
+  const wanted = new Set((seedIds || []).filter(id => model.people.has(id)));
+  const starts = wanted.size ? Array.from(wanted) : Array.from(model.people.keys());
+  const seen = new Set();
+  const comps = [];
+
+  starts.forEach(startId => {
+    if (seen.has(startId)) return;
+    const comp = new Set();
+    const queue = [startId];
+    while (queue.length) {
+      const id = queue.shift();
+      if (comp.has(id) || !model.people.has(id)) continue;
+      comp.add(id);
+      const p = model.people.get(id);
+      // Free-position people are fixed visual boundary pins. Include them as
+      // endpoints, but do not traverse through them into another layout island.
+      if (p.noSnap) continue;
+      for (const next of adj.get(id) || []) if (!comp.has(next)) queue.push(next);
+    }
+    comp.forEach(id => seen.add(id));
+    if (comp.size) comps.push(comp);
+  });
+
+  // Also pick up any unseeded disconnected people.
+  model.people.forEach((_, id) => {
+    if (seen.has(id)) return;
+    const comp = new Set([id]);
+    seen.add(id);
+    comps.push(comp);
+  });
+  return comps;
+}
+
+function studioFamiliesInComponent(model, comp) {
+  const out = [];
+  model.families.forEach(fam => {
+    const participants = fam.parents.concat(fam.children);
+    if (!participants.some(id => comp.has(id))) return;
+    if (!participants.some(id => comp.has(id) && !model.people.get(id)?.noSnap)) return;
+    out.push(fam);
+  });
+  return out;
+}
+
+function studioFamilyChildOrder(model, fam) {
+  return (fam.children || [])
+    .map((id, idx) => ({ idx, p: model.people.get(id) }))
+    .filter(item => item.p)
+    .sort((a, b) => (a.p.oldX - b.p.oldX) || (a.idx - b.idx) || a.p.id.localeCompare(b.p.id))
+    .map(item => item.p);
+}
+
+function studioAncestorFamilySet(model, personId, memo, visiting) {
+  memo = memo || new Map();
+  visiting = visiting || new Set();
+  if (memo.has(personId)) return memo.get(personId);
+  if (visiting.has(personId)) return new Set();
+  visiting.add(personId);
+  const out = new Set();
+  const p = model.people.get(personId);
+  (p?.childOfFamilies || []).forEach(fid => {
+    out.add(fid);
+    const fam = model.families.get(fid);
+    (fam?.parents || []).forEach(pid => studioAncestorFamilySet(model, pid, memo, visiting).forEach(x => out.add(x)));
+  });
+  visiting.delete(personId);
+  memo.set(personId, out);
+  return out;
+}
+
+function studioFamilyIsInternalKinship(model, fam, memo) {
+  if (!fam || fam.parents.length < 2) return false;
+  if (fam.partnership && (isProtectedInternalPartnershipType(fam.partnership.type))) return true;
+  memo = memo || new Map();
+  for (let i = 0; i < fam.parents.length; i++) {
+    const a = studioAncestorFamilySet(model, fam.parents[i], memo, new Set());
+    for (let j = i + 1; j < fam.parents.length; j++) {
+      const b = studioAncestorFamilySet(model, fam.parents[j], memo, new Set());
+      for (const fid of a) if (b.has(fid)) return true;
+    }
+  }
+  return false;
+}
+
+function studioComputeBranchWidths(model, comp, families) {
+  const famById = new Map((families || []).map(f => [f.id, f]));
+  const personMemo = new Map();
+  const familyMemo = new Map();
+  const ancestorMemo = new Map();
+  const branchGap = studioLayoutBranchGap();
+  const minPersonWidth = studioLayoutCenterGap();
+
+  function personWidth(id, visitingPeople, visitingFamilies) {
+    if (personMemo.has(id)) return personMemo.get(id);
+    const p = model.people.get(id);
+    if (!p || !comp.has(id)) return minPersonWidth;
+    if (visitingPeople.has(id)) return minPersonWidth;
+    visitingPeople.add(id);
+
+    let width = minPersonWidth;
+    (p.partnerFamilies || []).forEach(fid => {
+      const fam = famById.get(fid);
+      if (!fam || studioFamilyIsInternalKinship(model, fam, ancestorMemo)) return;
+      const children = studioFamilyChildOrder(model, fam).filter(ch => comp.has(ch.id));
+      if (!children.length) return;
+      const childWidths = children.map(ch => personWidth(ch.id, visitingPeople, visitingFamilies));
+      const childSpan = childWidths.reduce((a, b) => a + b, 0) + branchGap * Math.max(0, childWidths.length - 1);
+      const coupleSpan = fam.parents.filter(pid => comp.has(pid)).length > 1 ? studioLayoutCenterGap() + SHAPE_SIZE : SHAPE_SIZE;
+      width = Math.max(width, childSpan, coupleSpan);
+    });
+
+    visitingPeople.delete(id);
+    personMemo.set(id, width);
+    return width;
+  }
+
+  function familyWidth(fid, visitingPeople, visitingFamilies) {
+    if (familyMemo.has(fid)) return familyMemo.get(fid);
+    const fam = famById.get(fid);
+    if (!fam) return minPersonWidth;
+    if (visitingFamilies.has(fid)) return minPersonWidth;
+    visitingFamilies.add(fid);
+    const children = studioFamilyChildOrder(model, fam).filter(ch => comp.has(ch.id));
+    const childWidths = children.map(ch => personWidth(ch.id, visitingPeople, visitingFamilies));
+    const childSpan = childWidths.reduce((a, b) => a + b, 0) + branchGap * Math.max(0, childWidths.length - 1);
+    const parentSpan = Math.max(SHAPE_SIZE, (fam.parents.filter(pid => comp.has(pid)).length - 1) * studioLayoutCenterGap() + SHAPE_SIZE);
+    const width = Math.max(parentSpan, childSpan || minPersonWidth);
+    visitingFamilies.delete(fid);
+    familyMemo.set(fid, width);
+    return width;
+  }
+
+  comp.forEach(id => personWidth(id, new Set(), new Set()));
+  (families || []).forEach(fam => familyWidth(fam.id, new Set(), new Set()));
+  return { people: personMemo, families: familyMemo };
+}
+
+function studioRowsForComponent(model, comp) {
+  const rows = new Map();
+  comp.forEach(id => {
+    const p = model.people.get(id);
+    if (!p) return;
+    if (!rows.has(p.rank)) rows.set(p.rank, []);
+    rows.get(p.rank).push(p);
+  });
+  rows.forEach(row => row.sort((a, b) => (a.x - b.x) || studioSortPeopleByOldPosition(a, b)));
+  return rows;
+}
+
+function studioMoveDescendantIsland(model, comp, startId, dx, visited, ancestorMemo) {
+  if (!isFinite(dx) || Math.abs(dx) < 0.1) return;
+  visited = visited || new Set();
+  ancestorMemo = ancestorMemo || new Map();
+  if (visited.has(startId)) return;
+  visited.add(startId);
+  const p = model.people.get(startId);
+  if (!p || !comp.has(startId) || p.noSnap) return;
+  p.x += dx;
+
+  (p.partnerFamilies || []).forEach(fid => {
+    const fam = model.families.get(fid);
+    if (!fam || studioFamilyIsInternalKinship(model, fam, ancestorMemo)) return;
+    fam.parents.forEach(pid => {
+      if (pid === startId) return;
+      const partner = model.people.get(pid);
+      if (partner && comp.has(pid) && !partner.noSnap && !visited.has(pid)) {
+        partner.x += dx;
+        visited.add(pid);
+      }
+    });
+    (fam.children || []).forEach(cid => studioMoveDescendantIsland(model, comp, cid, dx, visited, ancestorMemo));
+  });
+}
+
+function studioResolveRowOverlaps(model, comp) {
+  const gap = studioLayoutCenterGap();
+  const rows = studioRowsForComponent(model, comp);
+  let moved = false;
+
+  rows.forEach(row => {
+    // Pairwise relaxation handles fixed noSnap pins better than a one-way cursor.
+    for (let pass = 0; pass < Math.max(18, row.length * 6); pass++) {
+      let passMoved = false;
+      row.sort((a, b) => (a.x - b.x) || a.id.localeCompare(b.id));
+      for (let i = 0; i < row.length - 1; i++) {
+        const a = row[i], b = row[i + 1];
+        const required = a.x + gap;
+        if (b.x >= required - 0.5) continue;
+        const overlap = required - b.x;
+        if (a.noSnap && b.noSnap) continue;
+        if (a.noSnap && !b.noSnap) {
+          b.x += overlap;
+        } else if (!a.noSnap && b.noSnap) {
+          a.x -= overlap;
+        } else {
+          a.x -= overlap / 2;
+          b.x += overlap / 2;
+        }
+        passMoved = true;
+        moved = true;
+      }
+      if (!passMoved) break;
+    }
+  });
+  return moved;
+}
+
+function studioPartnerBlocksForRow(model, row, families) {
+  const rowSet = new Set(row.map(p => p.id));
+  const adjacency = new Map(row.map(p => [p.id, new Set()]));
+  const ancestorMemo = new Map();
+  (families || []).forEach(fam => {
+    if (fam.parents.length !== 2) return;
+    const a = model.people.get(fam.parents[0]), b = model.people.get(fam.parents[1]);
+    if (!a || !b || a.rank !== b.rank || !rowSet.has(a.id) || !rowSet.has(b.id)) return;
+    if (studioFamilyIsInternalKinship(model, fam, ancestorMemo)) return;
+    adjacency.get(a.id)?.add(b.id);
+    adjacency.get(b.id)?.add(a.id);
+  });
+
+  const used = new Set();
+  const blocks = [];
+  row.forEach(p => {
+    if (used.has(p.id) || !(adjacency.get(p.id)?.size)) return;
+    const ids = [];
+    const q = [p.id];
+    used.add(p.id);
+    while (q.length) {
+      const id = q.shift();
+      ids.push(id);
+      for (const next of adjacency.get(id) || []) {
+        if (!used.has(next)) { used.add(next); q.push(next); }
+      }
+    }
+    const people = ids.map(id => model.people.get(id)).filter(Boolean).sort((a, b) => {
+      const sa = studioPersonSexClass(a.data), sb = studioPersonSexClass(b.data);
+      if (sa === 'male' && sb === 'female') return -1;
+      if (sa === 'female' && sb === 'male') return 1;
+      return studioSortPeopleByOldPosition(a, b);
+    });
+    blocks.push(people);
+  });
+  return blocks;
+}
+
+function studioEnforcePartnerAdjacency(model, comp, families) {
+  const gap = studioLayoutCenterGap();
+  let moved = false;
+  const ancestorMemo = new Map();
+  (families || []).forEach(fam => {
+    if (fam.parents.length !== 2 || studioFamilyIsInternalKinship(model, fam, ancestorMemo)) return;
+    const ordered = studioOrderedParents(model, fam).filter(p => comp.has(p.id));
+    if (ordered.length !== 2) return;
+    const [left, right] = ordered;
+    if (left.rank !== right.rank) return;
+    const children = studioFamilyChildOrder(model, fam).filter(ch => comp.has(ch.id));
+    const parentCurrentCenter = managedAverage([left.x + SHAPE_HALF, right.x + SHAPE_HALF]);
+    const childCenter = children.length ? managedAverage(children.map(ch => ch.x + SHAPE_HALF)) : parentCurrentCenter;
+    const center = children.length ? (parentCurrentCenter * 0.45 + childCenter * 0.55) : parentCurrentCenter;
+    const targetLeft = center - gap / 2 - SHAPE_HALF;
+    const targetRight = center + gap / 2 - SHAPE_HALF;
+    if (left.noSnap && !right.noSnap) {
+      const nx = left.x + gap;
+      if (Math.abs(right.x - nx) > 0.5) { right.x = nx; moved = true; }
+    } else if (right.noSnap && !left.noSnap) {
+      const nx = right.x - gap;
+      if (Math.abs(left.x - nx) > 0.5) { left.x = nx; moved = true; }
+    } else if (!left.noSnap && !right.noSnap) {
+      if (Math.abs(left.x - targetLeft) > 0.5) { left.x = left.x * 0.35 + targetLeft * 0.65; moved = true; }
+      if (Math.abs(right.x - targetRight) > 0.5) { right.x = right.x * 0.35 + targetRight * 0.65; moved = true; }
+    }
+  });
+  return moved;
+}
+
+function studioComputeBarycentricTargets(model, comp, families, branchWidths) {
+  const targets = new Map();
+  function push(id, x, weight) {
+    if (!isFinite(x) || !model.people.has(id)) return;
+    if (!targets.has(id)) targets.set(id, { total: 0, weight: 0 });
+    const t = targets.get(id);
+    t.total += x * weight;
+    t.weight += weight;
+  }
+
+  const branchGap = studioLayoutBranchGap();
+  const gap = studioLayoutCenterGap();
+  const ancestorMemo = new Map();
+
+  (families || []).forEach(fam => {
+    const parents = studioOrderedParents(model, fam).filter(p => comp.has(p.id));
+    const children = studioFamilyChildOrder(model, fam).filter(ch => comp.has(ch.id));
+    if (!parents.length && !children.length) return;
+
+    let familyCenter = null;
+    if (parents.length) familyCenter = managedAverage(parents.map(p => p.x + SHAPE_HALF));
+    if (familyCenter === null && children.length) familyCenter = managedAverage(children.map(ch => ch.x + SHAPE_HALF));
+    if (!isFinite(familyCenter)) familyCenter = 0;
+
+    if (parents.length === 2 && parents[0].rank === parents[1].rank && !studioFamilyIsInternalKinship(model, fam, ancestorMemo)) {
+      const [left, right] = parents;
+      const childCenter = children.length ? managedAverage(children.map(ch => ch.x + SHAPE_HALF)) : familyCenter;
+      const center = children.length ? (familyCenter * 0.35 + childCenter * 0.65) : familyCenter;
+      push(left.id, center - gap / 2 - SHAPE_HALF, 7);
+      push(right.id, center + gap / 2 - SHAPE_HALF, 7);
+      fam.x = center;
+      familyCenter = center;
+    } else if (parents.length) {
+      fam.x = familyCenter;
+    }
+
+    if (children.length) {
+      const widths = children.map(ch => Math.max(gap, branchWidths.people.get(ch.id) || gap));
+      const totalWidth = widths.reduce((a, b) => a + b, 0) + branchGap * Math.max(0, widths.length - 1);
+      let cursor = familyCenter - totalWidth / 2;
+      children.forEach((child, idx) => {
+        const childCenter = cursor + widths[idx] / 2;
+        push(child.id, childCenter - SHAPE_HALF, children.length === 1 ? 12 : 9);
+        cursor += widths[idx] + branchGap;
+      });
+    }
+  });
+
+  return targets;
+}
+
+function studioApplyBarycentricOrdering(model, comp, families, targets) {
+  const rows = studioRowsForComponent(model, comp);
+  let moved = false;
+  rows.forEach(row => {
+    const blocks = studioPartnerBlocksForRow(model, row, families);
+    const blocked = new Set(blocks.flat().map(p => p.id));
+    const items = [];
+    blocks.forEach(block => {
+      const key = managedAverage(block.map(p => {
+        const t = targets.get(p.id);
+        return t && t.weight ? t.total / t.weight : p.x;
+      }));
+      items.push({ people: block, key });
+    });
+    row.forEach(p => {
+      if (blocked.has(p.id)) return;
+      const t = targets.get(p.id);
+      const key = t && t.weight ? t.total / t.weight : p.x;
+      items.push({ people: [p], key });
+    });
+    items.sort((a, b) => (a.key - b.key) || studioSortPeopleByOldPosition(a.people[0], b.people[0]));
+
+    let cursor = Math.min(...row.map(p => p.noSnap ? p.x : p.x));
+    if (!isFinite(cursor)) cursor = 80;
+    items.forEach(item => {
+      const sortedPeople = item.people;
+      sortedPeople.forEach((p, idx) => {
+        if (p.noSnap) {
+          cursor = Math.max(cursor, p.x + studioLayoutCenterGap());
+          return;
+        }
+        const targetX = cursor + idx * studioLayoutCenterGap();
+        if (Math.abs(p.x - targetX) > 0.5) {
+          p.x = p.x * 0.55 + targetX * 0.45;
+          moved = true;
+        }
+      });
+      cursor += sortedPeople.length * studioLayoutCenterGap();
+    });
+  });
+  return moved;
+}
+
+function studioPlaceChildBranches(model, comp, families, branchWidths) {
+  const branchGap = studioLayoutBranchGap();
+  const gap = studioLayoutCenterGap();
+  let moved = false;
+
+  const orderedFamilies = (families || []).slice().sort((a, b) => (a.rank - b.rank) || String(a.id).localeCompare(String(b.id)));
+  orderedFamilies.forEach(fam => {
+    const parents = studioOrderedParents(model, fam).filter(p => comp.has(p.id));
+    const children = studioFamilyChildOrder(model, fam).filter(ch => comp.has(ch.id) && !ch.noSnap);
+    if (!children.length) return;
+
+    const parentCenter = parents.length
+      ? managedAverage(parents.map(p => p.x + SHAPE_HALF))
+      : managedAverage(children.map(ch => ch.x + SHAPE_HALF));
+    const widths = children.map(ch => Math.max(gap, branchWidths.people.get(ch.id) || gap));
+    const total = widths.reduce((a, b) => a + b, 0) + branchGap * Math.max(0, widths.length - 1);
+    let cursor = parentCenter - total / 2;
+
+    children.forEach((child, idx) => {
+      const targetX = cursor + widths[idx] / 2 - SHAPE_HALF;
+      const dx = targetX - child.x;
+      if (Math.abs(dx) > 0.75) {
+        studioMoveDescendantIsland(model, comp, child.id, dx * 0.75, new Set(), new Map());
+        moved = true;
+      }
+      cursor += widths[idx] + branchGap;
+    });
+  });
+  return moved;
+}
+
+function studioInitialiseComponentCoordinates(model, comp, families, options) {
+  const people = Array.from(comp).map(id => model.people.get(id)).filter(Boolean);
+  if (!people.length) return;
+  const fresh = !!(options && (options.fresh || options.fromButton || options.reason === 'manualRedistribute'));
+  const generationGap = Math.max(childHeight || 0, SHAPE_SIZE * 2.45);
+  const minRank = Math.min(...people.map(p => p.rank || 0));
+  const movable = people.filter(p => !p.noSnap);
+  const yAnchors = (movable.length ? movable : people).map(p => p.oldY - ((p.rank || 0) - minRank) * generationGap);
+  const baseY = yAnchors.length
+    ? (fresh ? Math.min(...yAnchors) : managedMedian(yAnchors))
+    : 80;
+
+  people.forEach(p => {
+    p.y = p.noSnap ? p.oldY : baseY + ((p.rank || 0) - minRank) * generationGap;
+    p.x = p.noSnap ? p.oldX : p.oldX;
+  });
+
+  if (fresh) {
+    const rows = studioRowsForComponent(model, comp);
+    const minOldX = Math.min(...people.map(p => p.oldX));
+    rows.forEach(row => {
+      row.sort(studioSortPeopleByOldPosition);
+      let cursor = isFinite(minOldX) ? minOldX : 80;
+      row.forEach(p => {
+        if (p.noSnap) {
+          cursor = Math.max(cursor, p.oldX + studioLayoutCenterGap());
+          return;
+        }
+        p.x = cursor;
+        cursor += studioLayoutCenterGap();
+      });
+    });
+  }
+}
+
+function nudgeManagedComponentToOldCentre(model, comp) {
+  const movable = Array.from(comp).map(id => model.people.get(id)).filter(p => p && !p.noSnap);
+  if (!movable.length) return;
+  const dx = managedMedian(movable.map(p => p.oldX)) - managedMedian(movable.map(p => p.x));
+  const dy = managedMedian(movable.map(p => p.oldY)) - managedMedian(movable.map(p => p.y));
+  if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
+  movable.forEach(p => { p.x += dx; p.y += dy; });
+}
+
+function keepManagedComponentInPositiveSpace(model, comp) {
+  const movable = Array.from(comp).map(id => model.people.get(id)).filter(p => p && !p.noSnap);
+  if (!movable.length) return;
+  const minX = Math.min(...movable.map(p => p.x));
+  const minY = Math.min(...movable.map(p => p.y));
+  const dx = minX < 40 ? 40 - minX : 0;
+  const dy = minY < 40 ? 40 - minY : 0;
+  if (dx || dy) movable.forEach(p => { p.x += dx; p.y += dy; });
+}
+
+function layoutManagedComponent(model, comp, options) {
+  const people = Array.from(comp).map(id => model.people.get(id)).filter(Boolean);
+  if (!people.length || people.every(p => p.noSnap)) return;
+
+  const fresh = !!(options && (options.fresh || options.fromButton || options.reason === 'manualRedistribute'));
+  const families = studioFamiliesInComponent(model, comp);
+  studioInitialiseComponentCoordinates(model, comp, families, options || {});
+
+  for (let iter = 0; iter < 24; iter++) {
+    const branchWidths = studioComputeBranchWidths(model, comp, families);
+    const targets = studioComputeBarycentricTargets(model, comp, families, branchWidths);
+
+    targets.forEach((t, id) => {
+      const p = model.people.get(id);
+      if (!p || p.noSnap || !t.weight) return;
+      const targetX = t.total / t.weight;
+      const damping = iter < 5 ? 0.72 : 0.48;
+      p.x = p.x * (1 - damping) + targetX * damping;
+    });
+
+    studioApplyBarycentricOrdering(model, comp, families, targets);
+    studioEnforcePartnerAdjacency(model, comp, families);
+    studioResolveRowOverlaps(model, comp);
+  }
+
+  const finalWidths = studioComputeBranchWidths(model, comp, families);
+  for (let i = 0; i < 4; i++) {
+    studioPlaceChildBranches(model, comp, families, finalWidths);
+    studioEnforcePartnerAdjacency(model, comp, families);
+    studioResolveRowOverlaps(model, comp);
+  }
+
+  if (!fresh) nudgeManagedComponentToOldCentre(model, comp);
+  keepManagedComponentInPositiveSpace(model, comp);
+}
+
+function applyManagedLayoutToPersons(model, comp) {
+  comp.forEach(id => {
+    const lp = model.people.get(id);
+    if (!lp || lp.noSnap) return;
+    managedSetPersonPos(lp.data, lp.x, lp.y);
+    if (lp.data.siblingFixed) lp.data.siblingFixed = false;
+  });
+}
+
+function managedSegmentIntersectsPersonBox(x1, y1, x2, y2, person, pad) {
+  const left = managedGetLeft(person) - pad;
+  const right = managedGetLeft(person) + SHAPE_SIZE + pad;
+  const top = managedGetTop(person) - pad;
+  const bottom = managedGetTop(person) + SHAPE_SIZE + pad;
+  if (Math.max(x1, x2) < left || Math.min(x1, x2) > right || Math.max(y1, y2) < top || Math.min(y1, y2) > bottom) return false;
+  if (Math.abs(y1 - y2) <= Math.max(6, SHAPE_SIZE * 0.2)) {
+    const y = (y1 + y2) / 2;
+    return y >= top && y <= bottom && right > Math.min(x1, x2) + SHAPE_HALF && left < Math.max(x1, x2) - SHAPE_HALF;
+  }
+  function ccw(ax, ay, bx, by, cx, cy) { return (cy - ay) * (bx - ax) > (by - ay) * (cx - ax); }
+  function segHit(ax, ay, bx, by, cx, cy, dx, dy) {
+    return ccw(ax, ay, cx, cy, dx, dy) !== ccw(bx, by, cx, cy, dx, dy) &&
+           ccw(ax, ay, bx, by, cx, cy) !== ccw(ax, ay, bx, by, dx, dy);
+  }
+  if (x1 >= left && x1 <= right && y1 >= top && y1 <= bottom) return true;
+  if (x2 >= left && x2 <= right && y2 >= top && y2 <= bottom) return true;
+  return segHit(x1, y1, x2, y2, left, top, right, top) ||
+         segHit(x1, y1, x2, y2, right, top, right, bottom) ||
+         segHit(x1, y1, x2, y2, right, bottom, left, bottom) ||
+         segHit(x1, y1, x2, y2, left, bottom, left, top);
+}
+
+function enforceManagedPartnershipLineClearance() {
+  const rowGap = studioLayoutCenterGap();
+  const pad = Math.max(3, (typeof STROKE_W !== 'undefined' ? STROKE_W : 2) + 2);
+  let moved = false;
+
+  partnerships.forEach(pship => {
+    // Do not push people out of the way for protected internal relationship lines.
+    // These may legitimately span cousin branches or shared-partner loops; treating
+    // them like ordinary spouse corridors reintroduces the large-gap behaviour that
+    // default mode now avoids.
+    if (isProtectedInternalPartnership(pship)) return;
+    const a = persons.get(pship.fromId);
+    const b = persons.get(pship.toId);
+    if (!a || !b) return;
+    const ac = getPersonCenter(a), bc = getPersonCenter(b);
+    const minX = Math.min(ac.x, bc.x), maxX = Math.max(ac.x, bc.x), midX = (ac.x + bc.x) / 2;
+    const blockers = Array.from(persons.values()).filter(p => {
+      if (!p || p.id === a.id || p.id === b.id || p.noSnap) return false;
+      return managedSegmentIntersectsPersonBox(ac.x, ac.y, bc.x, bc.y, p, pad);
+    }).sort((p, q) => managedGetLeft(p) - managedGetLeft(q));
+
+    blockers.forEach(blocker => {
+      const bx = managedGetLeft(blocker) + SHAPE_HALF;
+      const leftTarget = minX - rowGap - SHAPE_HALF;
+      const rightTarget = maxX + rowGap - SHAPE_HALF;
+      const current = managedGetLeft(blocker);
+      const nextX = bx < midX
+        ? (Math.abs(current - leftTarget) <= Math.abs(current - rightTarget) ? leftTarget : rightTarget)
+        : (Math.abs(current - rightTarget) <= Math.abs(current - leftTarget) ? rightTarget : leftTarget);
+      if (Math.abs(current - nextX) > 0.5) {
+        managedSetPersonPos(blocker, nextX, managedGetTop(blocker));
+        moved = true;
+      }
+    });
+  });
+  return moved;
+}
+
+function enforceManagedNoPersonOverlap() {
+  const rowGap = studioLayoutCenterGap();
+  const tolerance = Math.max(14, SHAPE_SIZE * 0.35);
+  const rows = [];
+  Array.from(persons.values()).forEach(p => {
+    const y = managedGetTop(p);
+    let row = rows.find(r => Math.abs(r.y - y) <= tolerance);
+    if (!row) { row = { y, items: [] }; rows.push(row); }
+    row.items.push(p);
+    row.y = managedAverage(row.items.map(item => managedGetTop(item)));
+  });
+
+  let moved = false;
+  rows.forEach(row => {
+    row.items.sort((a, b) => managedGetLeft(a) - managedGetLeft(b));
+    for (let pass = 0; pass < Math.max(16, row.items.length * 6); pass++) {
+      let passMoved = false;
+      row.items.sort((a, b) => managedGetLeft(a) - managedGetLeft(b));
+      for (let i = 0; i < row.items.length - 1; i++) {
+        const a = row.items[i], b = row.items[i + 1];
+        const required = managedGetLeft(a) + rowGap;
+        if (managedGetLeft(b) >= required - 0.5) continue;
+        const overlap = required - managedGetLeft(b);
+        if (a.noSnap && b.noSnap) continue;
+        if (a.noSnap && !b.noSnap) {
+          managedSetPersonPos(b, managedGetLeft(b) + overlap, managedGetTop(b));
+        } else if (!a.noSnap && b.noSnap) {
+          managedSetPersonPos(a, managedGetLeft(a) - overlap, managedGetTop(a));
+        } else {
+          managedSetPersonPos(a, managedGetLeft(a) - overlap / 2, managedGetTop(a));
+          managedSetPersonPos(b, managedGetLeft(b) + overlap / 2, managedGetTop(b));
+        }
+        passMoved = true;
+        moved = true;
+      }
+      if (!passMoved) break;
+    }
+  });
+  return moved;
+}
+
+function runManagedPedigreeLayout(options) {
+  if (persons.size === 0) {
+    updateTextWrapping();
+    updateAllConnections();
+    updateNumbering();
+    return;
+  }
+
+  // Ensure v9-v11 protected relationship semantics are available to the
+  // managed layout engine even for older/imported sessions.  In particular,
+  // consanguineous-separated must behave like consanguineous, and shared-partner
+  // variants must behave like protected internal relationship lines.
+  if (typeof normalizeRelatedPartnershipTypes === 'function') normalizeRelatedPartnershipTypes();
+
+  syncPersonDataFromDom();
+  const model = buildManagedLayoutModel();
+  assignManagedRanks(model);
+  const components = getManagedLayoutComponents(model, options?.seedIds || []);
+
+  components.forEach(comp => layoutManagedComponent(model, comp, options || {}));
+  components.forEach(comp => applyManagedLayoutToPersons(model, comp));
+
+  for (let i = 0; i < 8; i++) {
+    const movedOverlap = enforceManagedNoPersonOverlap();
+    updateAllConnections();
+    const movedLine = enforceManagedPartnershipLineClearance();
+    if (!movedOverlap && !movedLine) break;
+  }
+
+  updateTextWrapping();
+  updateAllConnections();
+  updateNumbering();
+  expandCanvasIfNeeded();
+  scheduleSave();
+}
+
+/*
+Experimental integration changes that should NOT be copied for the button-only product direction:
+
+1. addPartnership() / addChildLink()
+   Earlier experimental builds called runManagedPedigreeLayout() automatically after every structural edit.
+   For the new product decision, keep the original freeform behaviour and call the engine only from
+   redistributePedigreeWithWarning().
+
+2. toggleIndividualMove(), startDrag(), onPointerUp(), getConnectedGroup()
+   Earlier builds experimented with subgraph movement semantics. Do not copy those movement overrides if
+   the goal is to restore the original Studio feel.
+
+3. computeChildLinkD(), updateChildLinkPos(), saveAsImage(), saveAsSVG()
+   Earlier builds experimented with forced-straight only-child lines. The agreed final direction was that
+   straight placement should be an insertion/layout convenience only, not a permanent rendering rule.
+   The button-only redistribution engine can use the original connection-rendering functions.
+
+4. Unsafe-partner fallback helpers are retained above for reference, but a button-only redistribution feature
+   does not need to intercept partner creation. If the developer wants warnings during manual editing, implement
+   that as a separate product choice, not as part of automatic redistribution.
+*/
+
+// ── Init ──
+// The start-up calls that ended the original script are in studio/practical.js.

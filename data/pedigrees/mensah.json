@@ -1,0 +1,34 @@
+{
+  "id": "mensah",
+  "title": "The Mensah family",
+  "about": "Model answer for interview 1. Abena's brother Kofi died suddenly; the post-mortem showed hypertrophic cardiomyopathy.",
+  "key": {"#1a2332": "Hypertrophic cardiomyopathy"},
+  "keyAt": [13.5, 0],
+  "check": {"ignore": ["yaw.affected", "adwoa.affected", "brothers.multiple"]},
+  "people": [
+    {"id": "yaw", "sex": "M", "gen": 0, "x": 3, "deceased": true, "text": "Yaw, d. 45\ndied suddenly in his sleep", "name": "Yaw", "label": "Yaw (Abena's grandfather)"},
+    {"id": "efua", "sex": "F", "gen": 0, "x": 5, "text": "Efua, 88", "name": "Efua", "label": "Efua (Abena's grandmother)"},
+    {"id": "kwasi", "sex": "M", "gen": 0, "x": 8, "deceased": true, "text": "Kwasi, d. 81\nstroke", "name": "Kwasi", "label": "Kwasi (Abena's grandfather)"},
+    {"id": "ama", "sex": "F", "gen": 0, "x": 10, "deceased": true, "text": "Ama, d. 79\ndiabetes", "name": "Ama", "label": "Ama (Abena's grandmother)"},
+    {"id": "adwoa", "sex": "F", "gen": 1, "x": 1, "text": "Adwoa, 68\npacemaker, reason not known", "name": "Adwoa", "label": "Adwoa (Abena's aunt)"},
+    {"id": "kojo", "sex": "M", "gen": 1, "x": 3, "text": "Kojo, 66", "name": "Kojo", "label": "Kojo (Abena's uncle)"},
+    {"id": "kwame", "sex": "M", "gen": 1, "x": 5.5, "affected": true, "text": "Kwame, 63\nHCM dx 62", "name": "Kwame", "label": "Kwame (Abena's father)"},
+    {"id": "akosua", "sex": "F", "gen": 1, "x": 7.5, "text": "Akosua, 61\nheart scan normal", "name": "Akosua", "label": "Akosua (Abena's mother)"},
+    {"id": "brothers", "sex": "M", "gen": 1, "x": 10, "multiple": 3, "text": "50s, all well", "label": "Akosua's three brothers"},
+    {"id": "james", "sex": "M", "gen": 2, "x": 3.5, "text": "James, 36", "name": "James", "label": "James (Abena's husband)"},
+    {"id": "abena", "sex": "F", "gen": 2, "x": 5.5, "proband": true, "text": "Abena, 34", "name": "Abena", "label": "Abena (the proband)"},
+    {"id": "kwesi", "sex": "M", "gen": 2, "x": 8, "text": "Kwesi, 31\nheart scan normal", "name": "Kwesi", "label": "Kwesi (Abena's brother)"},
+    {"id": "kofi", "sex": "M", "gen": 2, "x": 10, "deceased": true, "affected": true, "text": "Kofi, d. 28, sudden death\nHCM at post-mortem\nMYBPC3 variant", "name": "Kofi", "label": "Kofi (Abena's brother)"},
+    {"id": "ella", "sex": "F", "gen": 3, "x": 2, "text": "Ella, 6", "name": "Ella", "label": "Ella (Abena's daughter)"},
+    {"id": "loss", "sex": "U", "gen": 3, "x": 3.5, "loss": true, "text": "2021", "label": "the miscarriage"},
+    {"id": "noah", "sex": "M", "gen": 3, "x": 5, "text": "Noah, 3", "name": "Noah", "label": "Noah (Abena's son)"},
+    {"id": "preg", "sex": "U", "gen": 3, "x": 6.5, "pregnancy": true, "text": "12 weeks", "label": "Abena's current pregnancy"}
+  ],
+  "couples": [["yaw", "efua"], ["kwasi", "ama"], ["kwame", "akosua"], ["james", "abena"]],
+  "children": [
+    {"of": ["yaw", "efua"], "kids": ["adwoa", "kojo", "kwame"]},
+    {"of": ["kwasi", "ama"], "kids": ["akosua", "brothers"]},
+    {"of": ["kwame", "akosua"], "kids": ["abena", "kwesi", "kofi"]},
+    {"of": ["james", "abena"], "kids": ["ella", "loss", "noah", "preg"]}
+  ]
+}

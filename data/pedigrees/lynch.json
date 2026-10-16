@@ -1,0 +1,39 @@
+{
+  "id": "lynch",
+  "title": "Scenario 1: Lynch syndrome",
+  "about": "From the ethics lecture, scenario 1. Alice has bowel cancer and an MLH1 variant that causes Lynch syndrome.",
+  "colours": {"bowel": "#e67e22", "pancreas": "#c0392b"},
+  "key": {"bowel": "Bowel cancer", "pancreas": "Pancreatic cancer"},
+  "keyAt": [21.5, 0],
+  "people": [
+    {"id": "gf", "sex": "M", "gen": 0, "x": 9.25, "deceased": true, "affected": "bowel", "text": "d. 50\nBowel cancer dx 48", "label": "Alice's grandfather"},
+    {"id": "gm", "sex": "F", "gen": 0, "x": 11.25, "deceased": true, "label": "Alice's grandmother"},
+    {"id": "mum", "sex": "F", "gen": 1, "x": 4, "label": "Alice's mother"},
+    {"id": "dad", "sex": "M", "gen": 1, "x": 6, "deceased": true, "affected": "bowel", "text": "Bowel cancer\ndx ?47", "label": "Alice's father"},
+    {"id": "uncle", "sex": "M", "gen": 1, "x": 14.5, "affected": "bowel", "text": "70\nBowel cancer dx 64\nMLH1 variant +", "label": "Alice's uncle"},
+    {"id": "aunt", "sex": "F", "gen": 1, "x": 16.5, "label": "Gary and Bob's mother"},
+    {"id": "brian", "sex": "M", "gen": 2, "x": 1, "name": "Brian", "text": "Brian", "label": "Brian (Gwen's husband)"},
+    {"id": "gwen", "sex": "F", "gen": 2, "x": 3, "name": "Gwen", "deceased": true, "affected": "pancreas", "text": "Gwen, d. 48\nPancreatic cancer\nMLH1 variant +", "label": "Gwen (Alice's sister)"},
+    {"id": "alice", "sex": "F", "gen": 2, "x": 5.5, "name": "Alice", "proband": true, "affected": "bowel", "text": "Alice, 50\nBowel cancer dx 45\nMLH1 variant +", "label": "Alice (the proband)"},
+    {"id": "ann", "sex": "F", "gen": 2, "x": 9.5, "name": "Ann", "text": "Ann, 48\nDeclined testing", "label": "Ann (Alice's sister)"},
+    {"id": "annp", "sex": "M", "gen": 2, "x": 11.5, "label": "Ann's partner"},
+    {"id": "gary", "sex": "M", "gen": 2, "x": 14.5, "name": "Gary", "text": "Gary, 46", "label": "Gary (Alice's cousin)"},
+    {"id": "bob", "sex": "M", "gen": 2, "x": 17, "name": "Bob", "text": "Bob, 43\nDeclined testing", "label": "Bob (Alice's cousin)"},
+    {"id": "bobp", "sex": "F", "gen": 2, "x": 19, "label": "Bob's partner"},
+    {"id": "gd1", "sex": "F", "gen": 3, "x": 1, "text": "26", "label": "Gwen's elder daughter"},
+    {"id": "gd2", "sex": "F", "gen": 3, "x": 3, "text": "24", "label": "Gwen's younger daughter"},
+    {"id": "ad1", "sex": "F", "gen": 3, "x": 9.5, "text": "26", "label": "Ann's elder daughter"},
+    {"id": "ad2", "sex": "F", "gen": 3, "x": 11.5, "text": "21", "label": "Ann's younger daughter"},
+    {"id": "bd", "sex": "F", "gen": 3, "x": 17, "text": "20", "label": "Bob's daughter"},
+    {"id": "bs", "sex": "M", "gen": 3, "x": 19, "text": "19", "label": "Bob's son"}
+  ],
+  "couples": [["gf", "gm"], ["mum", "dad"], ["uncle", "aunt"], ["brian", "gwen"], ["ann", "annp"], ["bob", "bobp"]],
+  "children": [
+    {"of": ["gf", "gm"], "kids": ["dad", "uncle"]},
+    {"of": ["mum", "dad"], "kids": ["gwen", "alice", "ann"]},
+    {"of": ["uncle", "aunt"], "kids": ["gary", "bob"]},
+    {"of": ["brian", "gwen"], "kids": ["gd1", "gd2"]},
+    {"of": ["ann", "annp"], "kids": ["ad1", "ad2"]},
+    {"of": ["bob", "bobp"], "kids": ["bd", "bs"]}
+  ]
+}

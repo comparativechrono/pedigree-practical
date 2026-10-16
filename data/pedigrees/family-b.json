@@ -1,0 +1,29 @@
+{
+  "id": "family-b",
+  "title": "Family B",
+  "about": "Which pattern of inheritance fits best?",
+  "people": [
+    {"id": "gg1", "sex": "M", "gen": 0, "x": 5, "deceased": true, "label": "I-1"},
+    {"id": "gg2", "sex": "F", "gen": 0, "x": 7, "deceased": true, "label": "I-2"},
+    {"id": "w1", "sex": "F", "gen": 1, "x": 2, "label": "II-1"},
+    {"id": "s1", "sex": "M", "gen": 1, "x": 4, "label": "II-2"},
+    {"id": "d1", "sex": "F", "gen": 1, "x": 8, "label": "II-3"},
+    {"id": "h1", "sex": "M", "gen": 1, "x": 10, "label": "II-4"},
+    {"id": "c1", "sex": "F", "gen": 2, "x": 2.5, "label": "III-1"},
+    {"id": "m", "sex": "M", "gen": 2, "x": 5, "label": "III-2"},
+    {"id": "f", "sex": "F", "gen": 2, "x": 7, "label": "III-3"},
+    {"id": "c2", "sex": "M", "gen": 2, "x": 9.5, "label": "III-4"},
+    {"id": "k1", "sex": "F", "gen": 3, "x": 3, "label": "IV-1"},
+    {"id": "k2", "sex": "M", "gen": 3, "x": 4.5, "affected": true, "label": "IV-2"},
+    {"id": "k3", "sex": "F", "gen": 3, "x": 6, "label": "IV-3"},
+    {"id": "k4", "sex": "F", "gen": 3, "x": 7.5, "affected": true, "label": "IV-4"},
+    {"id": "k5", "sex": "M", "gen": 3, "x": 9, "label": "IV-5"}
+  ],
+  "couples": [["gg1", "gg2"], ["w1", "s1"], ["d1", "h1"], {"a": "m", "b": "f", "type": "consanguineous"}],
+  "children": [
+    {"of": ["gg1", "gg2"], "kids": ["s1", "d1"]},
+    {"of": ["w1", "s1"], "kids": ["c1", "m"]},
+    {"of": ["d1", "h1"], "kids": ["f", "c2"]},
+    {"of": ["m", "f"], "kids": ["k1", "k2", "k3", "k4", "k5"]}
+  ]
+}

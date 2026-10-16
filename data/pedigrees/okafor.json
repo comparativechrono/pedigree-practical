@@ -1,0 +1,34 @@
+{
+  "id": "okafor",
+  "title": "The Okafor family",
+  "about": "An example to read: Chidi is seven and has had hearing loss since birth.",
+  "colours": {"hearing": "#2980b9", "breast": "#c0392b"},
+  "key": {"hearing": "Hearing loss from birth", "breast": "Breast cancer"},
+  "keyAt": [15.5, 0],
+  "people": [
+    {"id": "nnamdi", "sex": "M", "gen": 0, "x": 6, "deceased": true, "text": "Nnamdi\nd. 82", "label": "Nnamdi (great-grandfather)"},
+    {"id": "adanna", "sex": "F", "gen": 0, "x": 8, "deceased": true, "text": "Adanna\nd. 90", "label": "Adanna (great-grandmother)"},
+    {"id": "ngozi", "sex": "F", "gen": 1, "x": 3, "text": "Ngozi, 84", "label": "Ngozi (Obi's mother)"},
+    {"id": "emeka", "sex": "M", "gen": 1, "x": 5, "deceased": true, "text": "Emeka\nd. 70, heart attack", "label": "Emeka (Obi's father)"},
+    {"id": "grace", "sex": "F", "gen": 1, "x": 9, "text": "Grace, 78", "label": "Grace (Amaka's mother)"},
+    {"id": "samuel", "sex": "M", "gen": 1, "x": 11, "deceased": true, "text": "Samuel\nd. 79", "label": "Samuel (Amaka's father)"},
+    {"id": "ifeanyi", "sex": "M", "gen": 2, "x": 2, "text": "Ifeanyi, 58", "label": "Ifeanyi (Obi's brother)"},
+    {"id": "obi", "sex": "M", "gen": 2, "x": 5, "text": "Obi, 55", "name": "Obi", "label": "Obi (Chidi's father)"},
+    {"id": "amaka", "sex": "F", "gen": 2, "x": 7.5, "text": "Amaka, 52", "name": "Amaka", "label": "Amaka (Chidi's mother)"},
+    {"id": "chioma", "sex": "F", "gen": 2, "x": 10, "deceased": true, "affected": "breast", "text": "Chioma, d. 45\nbreast cancer dx 41", "label": "Chioma (Amaka's sister)"},
+    {"id": "brothers", "sex": "M", "gen": 2, "x": 12.5, "multiple": 3, "text": "all well", "label": "Amaka's three brothers"},
+    {"id": "ada", "sex": "F", "gen": 3, "x": 3.5, "text": "Ada, 14", "name": "Ada", "label": "Ada (Chidi's sister)"},
+    {"id": "loss", "sex": "U", "gen": 3, "x": 5, "loss": true, "text": "2016", "label": "a miscarriage"},
+    {"id": "chidi", "sex": "M", "gen": 3, "x": 6.75, "proband": true, "affected": "hearing", "text": "Chidi, 7", "name": "Chidi", "label": "Chidi (the proband)"},
+    {"id": "dubem", "sex": "M", "gen": 3, "x": 8.5, "affected": "hearing", "text": "Dubem, 7", "name": "Dubem", "label": "Dubem (Chidi's twin)"},
+    {"id": "preg", "sex": "U", "gen": 3, "x": 10.5, "pregnancy": true, "text": "16 weeks", "label": "the current pregnancy"}
+  ],
+  "couples": [["nnamdi", "adanna"], ["ngozi", "emeka"], ["grace", "samuel"], {"a": "obi", "b": "amaka", "type": "consanguineous"}],
+  "children": [
+    {"of": ["nnamdi", "adanna"], "kids": ["emeka", "grace"]},
+    {"of": ["ngozi", "emeka"], "kids": ["ifeanyi", "obi"]},
+    {"of": ["grace", "samuel"], "kids": ["amaka", "chioma", "brothers"]},
+    {"of": ["obi", "amaka"], "kids": ["ada", "loss", "chidi", "dubem", "preg"]}
+  ],
+  "twins": [{"a": "chidi", "b": "dubem", "type": "identical"}]
+}

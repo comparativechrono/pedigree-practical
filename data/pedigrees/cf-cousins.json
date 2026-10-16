@@ -1,0 +1,33 @@
+{
+  "id": "cf-cousins",
+  "title": "Cystic fibrosis: related grandparents",
+  "about": "From the workshop: it turns out that Lisa's and David's grandfathers are brothers, and Michael has been tested.",
+  "colours": {"cf": "#16a085"},
+  "key": {"cf": "Cystic fibrosis"},
+  "keyAt": [12.5, 0],
+  "people": [
+    {"id": "ggf", "sex": "M", "gen": 0, "x": 4.5, "deceased": true, "label": "great-grandfather"},
+    {"id": "ggm", "sex": "F", "gen": 0, "x": 6.5, "deceased": true, "label": "great-grandmother"},
+    {"id": "jw", "sex": "F", "gen": 1, "x": 1, "label": "John's wife"},
+    {"id": "john", "sex": "M", "gen": 1, "x": 3, "text": "John", "label": "John (Lisa's grandfather)"},
+    {"id": "arthur", "sex": "M", "gen": 1, "x": 8, "text": "Arthur", "label": "Arthur (David's grandfather)"},
+    {"id": "aw", "sex": "F", "gen": 1, "x": 10, "label": "Arthur's wife"},
+    {"id": "michael", "sex": "M", "gen": 2, "x": 2, "carrier": true, "text": "Michael\nCF carrier (tested)", "label": "Michael (Lisa's father)"},
+    {"id": "anne", "sex": "F", "gen": 2, "x": 4, "text": "Anne", "label": "Anne (Lisa's mother)"},
+    {"id": "philip", "sex": "M", "gen": 2, "x": 9, "text": "Philip", "label": "Philip (David's father)"},
+    {"id": "ruth", "sex": "F", "gen": 2, "x": 11, "text": "Ruth", "label": "Ruth (David's mother)"},
+    {"id": "lisa", "sex": "F", "gen": 3, "x": 5, "text": "Lisa", "label": "Lisa"},
+    {"id": "david", "sex": "M", "gen": 3, "x": 7, "proband": true, "text": "David", "label": "David"},
+    {"id": "amelia", "sex": "F", "gen": 3, "x": 9.5, "affected": "cf", "text": "Amelia\ncystic fibrosis", "label": "Amelia"},
+    {"id": "preg", "sex": "U", "gen": 4, "x": 6, "pregnancy": true, "label": "the pregnancy"}
+  ],
+  "couples": [["ggf", "ggm"], ["jw", "john"], ["arthur", "aw"], ["michael", "anne"], ["philip", "ruth"], {"a": "lisa", "b": "david", "type": "consanguineous"}],
+  "children": [
+    {"of": ["ggf", "ggm"], "kids": ["john", "arthur"]},
+    {"of": ["jw", "john"], "kids": ["michael"]},
+    {"of": ["arthur", "aw"], "kids": ["philip"]},
+    {"of": ["michael", "anne"], "kids": ["lisa"]},
+    {"of": ["philip", "ruth"], "kids": ["david", "amelia"]},
+    {"of": ["lisa", "david"], "kids": ["preg"]}
+  ]
+}
