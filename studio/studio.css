@@ -205,13 +205,22 @@ body.readonly .st-bar, body.readonly .inspector { display: none !important; }
 .link-delete-btn { position: absolute; width: 22px; height: 22px; border-radius: 50%; background: var(--danger); color: #fff; border: 2px solid #fff; font-size: 13px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 20; pointer-events: auto; box-shadow: 0 1px 4px rgba(0,0,0,0.2); transform: translate(-50%, -50%); }
 
 /* colour key */
-.legend-box { position: absolute; z-index: 15; background: #fff; border: 1.5px solid var(--border); border-radius: 8px; padding: 12px 16px; min-width: 180px; max-width: 300px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); cursor: grab; user-select: none; -webkit-user-select: none; touch-action: none; }
+.legend-box { position: absolute; z-index: 15; background: #fff; border: 1.5px solid var(--border); border-radius: 8px; padding: 12px 16px; min-width: 180px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); cursor: grab; user-select: none; -webkit-user-select: none; touch-action: none; }
 .legend-box.dragging { cursor: grabbing; z-index: 999; box-shadow: 0 6px 20px rgba(0,0,0,0.12); }
 .legend-box h4 { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px; color: var(--text-muted); margin-bottom: 8px; pointer-events: none; }
 .legend-row { display: flex; align-items: center; gap: 8px; padding: 3px 0; pointer-events: auto; }
 .legend-swatch { width: 18px; height: 18px; border-radius: 3px; border: 1px solid var(--border); flex-shrink: 0; }
-.legend-input { flex: 1; border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px; font-size: 11px; outline: none; background: var(--bg); min-width: 0; }
+.legend-input { flex: 1; border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px; font-size: 11px; line-height: 14px; font-family: -apple-system, "Segoe UI", system-ui, Helvetica, sans-serif; outline: none; background: var(--bg); min-width: 0; }
 .legend-input:focus { border-color: var(--accent); }
+/* a long entry widens the key (its field is sized to its text), or wraps onto more lines in a key of a set width,
+   which the grip on its right edge changes (as in Pedigree Studio) */
+.legend-box:not(.wrap) .legend-input { flex: none; }
+.legend-box.wrap .legend-row { align-items: flex-start; }
+.legend-box.wrap .legend-swatch { margin-top: 2px; }
+textarea.legend-input { display: block; resize: none; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; }
+.legend-resize { position: absolute; top: 10px; bottom: 10px; right: -6px; width: 12px; cursor: ew-resize; touch-action: none; }
+.legend-resize::after { content: ''; position: absolute; top: 50%; left: 4px; width: 4px; height: 26px; margin-top: -13px; border-radius: 2px; background: var(--border); }
+.legend-resize:hover::after { background: var(--accent); }
 .legend-empty { font-size: 11px; color: var(--text-muted); font-style: italic; pointer-events: none; }
 
 /* banners and overlays on the canvas */
@@ -310,4 +319,3 @@ body.readonly .st-bar, body.readonly .inspector { display: none !important; }
 .sib-move .pbtn { flex: 1; padding: 3px 6px; font-size: 11px; }
 .flash-ctl { animation: flashctl 1.2s ease 2; border-radius: 7px; }
 @keyframes flashctl { 0%, 100% { box-shadow: none; } 40%, 60% { box-shadow: 0 0 0 3px #ffb347, 0 0 12px #ffb347; } }
-.legend-input { field-sizing: content; min-width: 130px; max-width: 240px; }
