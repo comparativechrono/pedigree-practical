@@ -15,6 +15,10 @@
 //      to put students' pedigrees into their downloaded answers.
 //   3. The start-up block at the end of the original script has moved to
 //      studio/practical.js, which runs it after setting up the practical.
+//   4. Long entries in the key widen it, or wrap onto more lines (a setting
+//      under File), as Pedigree Studio's pull request #5 makes them; the
+//      key's code here was the same as in its later versions, so the change
+//      is copied as it is.
 // Everything else is unchanged.
 // ═════════════════════════════════════════════════════════════════════
 
@@ -5174,6 +5178,91 @@ function updateNumbering() {
 
 let legendVisible = false;
 let legendX = 100, legendY = 100;
+// A long entry in the key widens it ('widen': each entry on one line), or wraps onto more lines in a key legendWidth
+// pixels wide ('wrap'), which dragging the key's right edge changes
+let legendFit = 'widen';
+let legendWidth = 240;
+const LEGEND_MIN_WIDTH = 150, LEGEND_MAX_WIDTH = 640;
+const LEGEND_FONT = '-apple-system, "Segoe UI", system-ui, Helvetica, sans-serif';
+function clampLegendWidth(w) {
+  w = Number(w);
+  return isFinite(w) && w > 0 ? Math.round(Math.min(LEGEND_MAX_WIDTH, Math.max(LEGEND_MIN_WIDTH, w))) : 240;
+}
+
+// the width of a key entry's text, as the key and its exports draw it
+let legendMeasureCtx = null;
+function measureLegendText(text) {
+  if (!legendMeasureCtx) legendMeasureCtx = document.createElement('canvas').getContext('2d');
+  legendMeasureCtx.font = '11px ' + LEGEND_FONT;
+  return legendMeasureCtx.measureText(text).width;
+}
+// an entry's text broken into lines no wider than maxWidth: at spaces and after hyphens, as the key's own fields
+// break it, and inside a word only if the word alone is too wide
+function wrapLegendText(text, maxWidth, measure) {
+  measure = measure || measureLegendText;
+  const lines = [];
+  let line = '';
+  const push = () => { lines.push(line.replace(/\s+$/, '')); line = ''; };
+  for (const chunk of String(text).match(/[^\s-]*-+|[^\s-]+|\s+/g) || ['']) {
+    if (!line && /^\s+$/.test(chunk)) continue;
+    if (measure((line + chunk).replace(/\s+$/, '')) <= maxWidth) { line += chunk; continue; }
+    if (line) push();
+    if (/^\s+$/.test(chunk)) continue;
+    if (measure(chunk) <= maxWidth) { line = chunk; continue; }
+    for (const ch of chunk) {
+      if (line && measure(line + ch) > maxWidth) push();
+      line += ch;
+    }
+  }
+  if (line || !lines.length) push();
+  return lines;
+}
+// the room for an entry's text when the key wraps: the key's width less its padding, the swatch and the field's own
+// padding, so that the exports break lines where the key on the canvas does
+function legendWrapTextWidth() { return legendWidth - 75; }
+
+// the key's fields sized to their text: when it widens, all as wide as the longest entry, so that they line up;
+// when it wraps, each text area as tall as its lines
+function fitLegendFields(box) {
+  const fields = Array.from(box.querySelectorAll('.legend-input'));
+  if (legendFit === 'wrap') {
+    fields.forEach(field => {
+      field.style.height = 'auto';
+      // (the height includes the border, as boxes are sized border and all)
+      field.style.height = field.scrollHeight + (field.offsetHeight - field.clientHeight) + 'px';
+    });
+    return;
+  }
+  const w = Math.ceil(Math.max(96, ...fields.map(f => measureLegendText(f.value || f.placeholder)))) + 16;
+  fields.forEach(f => { f.style.width = w + 'px'; });
+}
+function legendField(key) {
+  const wrap = legendFit === 'wrap';
+  const field = document.createElement(wrap ? 'textarea' : 'input');
+  field.className = 'legend-input';
+  if (wrap) field.rows = 1; else field.type = 'text';
+  field.placeholder = 'Enter meaning…';
+  field.value = legendLabels[key] || '';
+  field.addEventListener('input', () => {
+    // an entry is one line of text, which the key may wrap: a line break pasted in becomes a space
+    if (wrap && /\n/.test(field.value)) field.value = field.value.replace(/\s*\n\s*/g, ' ');
+    legendLabels[key] = field.value;
+    const box = field.closest('.legend-box');
+    if (box) fitLegendFields(box);
+    scheduleSave();
+  });
+  if (wrap) field.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); field.blur(); } });
+  field.addEventListener('mousedown', (e) => e.stopPropagation());
+  field.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+  return field;
+}
+
+function setLegendFit(mode) {
+  legendFit = mode === 'wrap' ? 'wrap' : 'widen';
+  document.querySelectorAll('[data-lf]').forEach(b => b.classList.toggle('active', b.dataset.lf === legendFit));
+  if (legendVisible) buildLegendBox();
+  scheduleSave();
+}
 
 function toggleLegend() {
   legendVisible = !legendVisible;
@@ -5208,10 +5297,11 @@ function buildLegendBox() {
   });
 
   box = document.createElement('div');
-  box.className = 'legend-box';
+  box.className = 'legend-box' + (legendFit === 'wrap' ? ' wrap' : '');
   box.id = 'legend-box';
   box.style.left = legendX + 'px';
   box.style.top = legendY + 'px';
+  if (legendFit === 'wrap') box.style.width = legendWidth + 'px';
 
   const title = document.createElement('h4');
   title.textContent = 'KEY';
@@ -5229,16 +5319,8 @@ function buildLegendBox() {
       const swatch = document.createElement('div');
       swatch.className = 'legend-swatch';
       swatch.style.background = color;
-      const input = document.createElement('input');
-      input.className = 'legend-input';
-      input.type = 'text';
-      input.placeholder = 'Enter meaning…';
-      input.value = legendLabels[color] || '';
-      input.addEventListener('input', () => { legendLabels[color] = input.value; scheduleSave(); });
-      input.addEventListener('mousedown', (e) => e.stopPropagation());
-      input.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
       row.appendChild(swatch);
-      row.appendChild(input);
+      row.appendChild(legendField(color));
       box.appendChild(row);
     });
     shadingsInUse.forEach(sh => {
@@ -5265,23 +5347,51 @@ function buildLegendBox() {
         fillRect = `<rect width="10" height="20" fill="#fff"/><rect x="10" width="10" height="20" fill="url(#${pid})"/>`;
       }
       swatch.innerHTML = `<svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><defs>${patDef}</defs>${fillRect}<rect width="20" height="20" fill="none" stroke="${STROKE_COLOR}" stroke-width="1"/></svg>`;
-      const input = document.createElement('input');
-      input.className = 'legend-input';
-      input.type = 'text';
-      input.placeholder = 'Enter meaning…';
-      input.value = legendLabels[sh.key] || '';
-      input.addEventListener('input', () => { legendLabels[sh.key] = input.value; scheduleSave(); });
-      input.addEventListener('mousedown', (e) => e.stopPropagation());
-      input.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
       row.appendChild(swatch);
-      row.appendChild(input);
+      row.appendChild(legendField(sh.key));
       box.appendChild(row);
     });
   }
 
+  // When the key wraps, its right edge has a grip that makes it wider or narrower
+  if (legendFit === 'wrap') {
+    const grip = document.createElement('div');
+    grip.className = 'legend-resize';
+    grip.title = 'Drag to make the key wider or narrower';
+    const start = (e) => {
+      e.stopPropagation();
+      if (e.cancelable) e.preventDefault();
+      if (box.contains(document.activeElement)) document.activeElement.blur();
+      pushUndo();
+      const startX = getPointerPos(e).clientX, startW = legendWidth;
+      const move = (ev) => {
+        if (ev.cancelable) ev.preventDefault();
+        legendWidth = clampLegendWidth(startW + (getPointerPos(ev).clientX - startX) / zoomLevel);
+        box.style.width = legendWidth + 'px';
+        fitLegendFields(box);
+      };
+      const end = () => {
+        document.removeEventListener('mousemove', move);
+        document.removeEventListener('touchmove', move);
+        document.removeEventListener('mouseup', end);
+        document.removeEventListener('touchend', end);
+        document.removeEventListener('touchcancel', end);
+        scheduleSave();
+      };
+      document.addEventListener('mousemove', move);
+      document.addEventListener('touchmove', move, { passive: false });
+      document.addEventListener('mouseup', end);
+      document.addEventListener('touchend', end);
+      document.addEventListener('touchcancel', end);
+    };
+    grip.addEventListener('mousedown', start);
+    grip.addEventListener('touchstart', start, { passive: false });
+    box.appendChild(grip);
+  }
+
   // Make draggable
   const onDown = (e) => {
-    if (e.target.tagName === 'INPUT') return;
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
     if (e.cancelable) e.preventDefault();
     pushUndo();
     const pos = getPointerPos(e);
@@ -5298,6 +5408,8 @@ function buildLegendBox() {
   box.addEventListener('touchstart', onDown, { passive: false });
 
   document.getElementById('canvas').appendChild(box);
+  // (a text area's height can only be measured once it is on the page)
+  fitLegendFields(box);
 }
 
 let legendDragState = null;
@@ -5471,7 +5583,7 @@ function buildSessionData() {
     childLinks: childLinks.map(c => ({ id: c.id, partnershipId: c.partnershipId, childId: c.childId, branchYOffset: c.branchYOffset || 0, dashed: !!c.dashed })),
     twinLinks: twinLinks.map(t => ({ id: t.id, child1Id: t.child1Id, child2Id: t.child2Id, type: t.type, partnershipId: t.partnershipId })),
     legendLabels,
-    legendVisible, legendX, legendY,
+    legendVisible, legendX, legendY, legendFit, legendWidth,
     zoom: zoomLevel, panX, panY,
     numberingMode,
     partnerGapMultiplier: partnerGap / SHAPE_SIZE,
@@ -5502,6 +5614,9 @@ function restoreSession(data) {
   legendX = data.legendX || 100;
   legendY = data.legendY || 100;
   legendVisible = !!data.legendVisible;
+  legendFit = data.legendFit === 'wrap' ? 'wrap' : 'widen';
+  legendWidth = clampLegendWidth(data.legendWidth);
+  document.querySelectorAll('[data-lf]').forEach(b => b.classList.toggle('active', b.dataset.lf === legendFit));
 
   (data.persons || []).forEach(pd => {
     // Backward compat: old 'affected' boolean
@@ -5610,6 +5725,22 @@ function importJSON(event) {
 // EXPORT IMAGE
 // ══════════════════════
 
+// ── The key as the exports draw it: its width and height, and each entry's lines (entries: colours, then shadings) ──
+function legendExportLayout(entries) {
+  const LINE = 14, ROW = 24, TEXT_X = 36, RIGHT = 12;
+  const wrap = legendFit === 'wrap';
+  const room = legendWrapTextWidth();
+  const rows = entries.map(entry => {
+    const text = entry.label || '(unlabelled)';
+    const lines = wrap ? wrapLegendText(text, room) : [text];
+    return { entry, lines, h: ROW + (lines.length - 1) * LINE };
+  });
+  const widest = rows.reduce((w, r) => Math.max(w, ...r.lines.map(measureLegendText)), 0);
+  const lw = wrap ? room + TEXT_X + RIGHT : Math.max(200, Math.ceil(widest) + TEXT_X + RIGHT);
+  const lh = 30 + rows.reduce((sum, r) => sum + r.h, 0);
+  return { lw, lh, rows, line: LINE };
+}
+
 // ── Shared export bounds computation ──
 function computeExportBounds() {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -5639,6 +5770,7 @@ function computeExportBounds() {
   });
   const legendColors = [];
   const legendShadings = [];
+  let legendLayout = null;
   if (legendVisible) {
     const seen = new Set();
     const seenSh = new Set();
@@ -5653,13 +5785,13 @@ function computeExportBounds() {
     });
     const totalLegendItems = legendColors.length + legendShadings.length;
     if (totalLegendItems > 0) {
-      const legendH = totalLegendItems * 24 + 30;
+      legendLayout = legendExportLayout(legendColors.concat(legendShadings));
       minX = Math.min(minX, legendX - 10); minY = Math.min(minY, legendY - 10);
-      maxX = Math.max(maxX, legendX + 220); maxY = Math.max(maxY, legendY + legendH + 10);
+      maxX = Math.max(maxX, legendX + legendLayout.lw + 20); maxY = Math.max(maxY, legendY + legendLayout.lh + 10);
     }
   }
   const pad = 60;
-  return { minX: minX - pad, minY: minY - pad, maxX: maxX + pad, maxY: maxY + pad, legendColors, legendShadings };
+  return { minX: minX - pad, minY: minY - pad, maxX: maxX + pad, maxY: maxY + pad, legendColors, legendShadings, legendLayout };
 }
 
 function saveAsImage() {
@@ -5668,7 +5800,7 @@ function saveAsImage() {
 
   if (persons.size === 0 && labels.size === 0 && drawStrokes.length === 0) { document.getElementById('statusBar').textContent = 'Nothing to export'; return; }
 
-  const { minX, minY, maxX, maxY, legendColors, legendShadings } = computeExportBounds();
+  const { minX, minY, maxX, maxY, legendColors, legendShadings, legendLayout } = computeExportBounds();
 
   const scale = 2;
   const w = (maxX - minX) * scale, h = (maxY - minY) * scale;
@@ -6012,8 +6144,10 @@ function saveAsImage() {
   // ── Draw legend ──
   const totalLegendItems = legendColors.length + legendShadings.length;
   if (legendVisible && totalLegendItems > 0) {
-    const lx = legendX, ly = legendY, lw = 200, rowH = 24;
-    const totalH = totalLegendItems * rowH + 30;
+    const lx = legendX, ly = legendY, lw = legendLayout.lw;
+    const totalH = legendLayout.lh;
+    const rowTop = (entry) => { let y = ly + 28; for (const r of legendLayout.rows) { if (r.entry === entry) return y; y += r.h; } return y; };
+    const rowLines = (entry) => legendLayout.rows.find(r => r.entry === entry).lines;
     ctx.save(); ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#dde1e6'; ctx.lineWidth = 1.5;
     const br = 8;
     ctx.beginPath();
@@ -6024,17 +6158,15 @@ function saveAsImage() {
     ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
     ctx.fillStyle = '#6b7a8d'; ctx.font = 'bold 10px ' + FONT; ctx.textBaseline = 'top'; ctx.textAlign = 'left';
     ctx.fillText('KEY', lx + 12, ly + 10);
-    let legendIdx = 0;
     legendColors.forEach((lc) => {
-      const ry = ly + 28 + legendIdx * rowH;
+      const ry = rowTop(lc);
       ctx.fillStyle = lc.color; ctx.fillRect(lx + 12, ry, 16, 16);
       ctx.strokeStyle = '#dde1e6'; ctx.lineWidth = 1; ctx.strokeRect(lx + 12, ry, 16, 16);
       ctx.fillStyle = STROKE_COLOR; ctx.font = '11px ' + FONT;
-      ctx.fillText(lc.label || '(unlabelled)', lx + 36, ry + 2);
-      legendIdx++;
+      rowLines(lc).forEach((line, k) => ctx.fillText(line, lx + 36, ry + 2 + k * legendLayout.line));
     });
     legendShadings.forEach((sh) => {
-      const ry = ly + 28 + legendIdx * rowH;
+      const ry = rowTop(sh);
       // Draw shading pattern swatch
       const swX = lx + 12, swY = ry, swW = 16, swH = 16;
       ctx.fillStyle = '#ffffff'; ctx.fillRect(swX, swY, swW, swH);
@@ -6061,8 +6193,7 @@ function saveAsImage() {
       }
       ctx.strokeStyle = '#dde1e6'; ctx.lineWidth = 1; ctx.strokeRect(swX, swY, swW, swH);
       ctx.fillStyle = STROKE_COLOR; ctx.font = '11px ' + FONT;
-      ctx.fillText(sh.label || '(unlabelled)', lx + 36, ry + 2);
-      legendIdx++;
+      rowLines(sh).forEach((line, k) => ctx.fillText(line, lx + 36, ry + 2 + k * legendLayout.line));
     });
   }
 
@@ -6097,7 +6228,7 @@ function saveAsImage() {
 function buildPedigreeSVG() {
   if (persons.size === 0 && labels.size === 0 && drawStrokes.length === 0) return null;
 
-  const { minX, minY, maxX, maxY, legendColors, legendShadings } = computeExportBounds();
+  const { minX, minY, maxX, maxY, legendColors, legendShadings, legendLayout } = computeExportBounds();
   const w = maxX - minX, h = maxY - minY;
   const FONT = "-apple-system, 'Segoe UI', system-ui, Helvetica, sans-serif";
 
@@ -6386,19 +6517,22 @@ function buildPedigreeSVG() {
   // ── Legend ──
   const totalSvgLegendItems = legendColors.length + legendShadings.length;
   if (legendVisible && totalSvgLegendItems > 0) {
-    const lx = legendX, ly = legendY, lw = 200, rowH = 24;
-    const totalH = totalSvgLegendItems * rowH + 30;
+    const lx = legendX, ly = legendY, lw = legendLayout.lw;
+    const totalH = legendLayout.lh;
+    const rowTop = (entry) => { let y = ly + 28; for (const r of legendLayout.rows) { if (r.entry === entry) return y; y += r.h; } return y; };
+    const rowText = (entry, ry) => legendLayout.rows.find(r => r.entry === entry).lines.map((line, k) =>
+      `<text x="${lx + 36}" y="${ry + 12 + k * legendLayout.line}" text-anchor="start" dominant-baseline="central" font-size="11" fill="${STROKE_COLOR}" font-family="${FONT}">${esc(line)}</text>`).join('');
     els.push(`<rect x="${lx}" y="${ly}" width="${lw}" height="${totalH}" rx="8" ry="8" fill="#ffffff" stroke="#dde1e6" stroke-width="1.5"/>`);
     els.push(`<text x="${lx + 12}" y="${ly + 18}" text-anchor="start" font-size="10" font-weight="700" fill="#6b7a8d" font-family="${FONT}">KEY</text>`);
     let svgLegIdx = 0;
     legendColors.forEach((lc) => {
-      const ry = ly + 28 + svgLegIdx * rowH;
+      const ry = rowTop(lc);
       els.push(`<rect x="${lx + 12}" y="${ry}" width="16" height="16" fill="${lc.color}" stroke="#dde1e6" stroke-width="1"/>`);
-      els.push(`<text x="${lx + 36}" y="${ry + 12}" text-anchor="start" dominant-baseline="central" font-size="11" fill="${STROKE_COLOR}" font-family="${FONT}">${esc(lc.label || '(unlabelled)')}</text>`);
+      els.push(rowText(lc, ry));
       svgLegIdx++;
     });
     legendShadings.forEach((sh) => {
-      const ry = ly + 28 + svgLegIdx * rowH;
+      const ry = rowTop(sh);
       const spId = 'leg-exp-' + svgLegIdx;
       let patDef = '';
       if (sh.pattern === 'dots') {
@@ -6417,7 +6551,7 @@ function buildPedigreeSVG() {
       els.push(`<defs>${patDef}</defs>`);
       els.push(fillRect);
       els.push(`<rect x="${lx + 12}" y="${ry}" width="16" height="16" fill="none" stroke="#dde1e6" stroke-width="1"/>`);
-      els.push(`<text x="${lx + 36}" y="${ry + 12}" text-anchor="start" dominant-baseline="central" font-size="11" fill="${STROKE_COLOR}" font-family="${FONT}">${esc(sh.label || '(unlabelled)')}</text>`);
+      els.push(rowText(sh, ry));
       svgLegIdx++;
     });
   }

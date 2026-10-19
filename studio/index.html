@@ -99,6 +99,13 @@
       <input type="range" min="2" max="6" step="0.5" value="2.5" id="childHeightSlider" oninput="setChildHeight(this.value)"></label>
   </div>
   <div class="pop-sec">
+    <div class="pop-h">Long entries in the key</div>
+    <div class="seg2">
+      <button class="pbtn active" type="button" data-lf="widen" onclick="setLegendFit('widen')" title="Each entry on one line, with the key as wide as the longest">Widen the key</button>
+      <button class="pbtn" type="button" data-lf="wrap" onclick="setLegendFit('wrap')" title="Entries go onto more lines; drag the key's right edge to change its width">Wrap the text</button>
+    </div>
+  </div>
+  <div class="pop-sec">
     <div class="pop-h">Text labels</div>
     <div class="pop-row">
       <span class="pop-note" style="margin:0">Size</span>
@@ -388,6 +395,7 @@
       <li><b>Build out from them.</b> With a person selected, <b>Add a relative</b> adds a partner, children, parents or brothers and sisters, already joined up, and lays the pedigree out again to make room.</li>
       <li><b>Join people yourself</b> with the tools under <b>Connect</b>. <b>Partners</b>: click two people. <b>Child</b>: click a relationship line, then the child. <b>Twins</b>: click two children of the same couple.</li>
       <li><b>Describe each person</b> in the panel: notes under the symbol (name, age, diagnoses with age at diagnosis), deceased, shading for affected, and symbols inside (carrier dot, P for pregnancy, a number for several people).</li>
+      <li><b>Add a key</b> with <b>Key</b>: a box listing the colours in use, into which you type what each one means. Under <b>File</b>, a long entry can widen the key or wrap onto more lines; drag the right edge of a key that wraps to make it wider or narrower.</li>
       <li><b>Click a line</b> to change it: relationship lines can be consanguineous or separated, and a line of descent can be dashed for adoption.</li>
       <li><b>Drag</b> to move people. Dragging moves the whole connected family unless you switch on <b>Move one person at a time</b> under <b>File</b>. Drag the background to pan; scroll or pinch to zoom; <b>Fit</b> brings everything into view.</li>
     </ol>
