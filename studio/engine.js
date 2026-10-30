@@ -86,8 +86,8 @@ let zoomLevel = 1, panX = 0, panY = 0;
 // ── Draw tool state ──
 const drawStrokes = [];         // completed strokes: [{ points: [{x,y}...], color, width, el }]
 let drawState = null;           // active stroke in progress
-let drawColor = '#c0392b';      // current draw colour
-let drawLineWidth = 2;          // current draw line width
+let drawColor = '#1a2332';      // current draw colour: black, the Studio's own ink (the first swatch)
+let drawLineWidth = 4;          // current draw line width
 const DRAW_COLORS = ['#1a2332','#c0392b','#2980b9','#27ae60','#e67e22','#8e44ad','#7f8c8d','#d35400'];
 let drawEraser = false;          // eraser sub-mode within draw tool
 
