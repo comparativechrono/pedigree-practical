@@ -295,7 +295,7 @@
       else if (chk('multiple') && ep.multiple && sp.multiple && ep.multiple !== 'n' && sp.multiple !== ep.multiple && sp.multiple !== 'n' && sp.multiple !== 's') probs.push(`should have ${ep.multiple} inside`);
       if (chk('adopted') && ep.adopted !== sp.adopted) probs.push(ep.adopted ? 'was adopted: use the adopted symbol (in brackets)' : 'was not adopted, so should not be in brackets');
       if (chk('adopted') && E.dashedLine.has(e) && !S.dashedLine.has(s)) probs.push('was adopted into the family: make the line to their adoptive parents dashed');
-      if (chk('proband') && ep.proband !== sp.proband) probs.push(ep.proband ? 'is the proband, so needs the arrow' : 'is not the proband');
+      if (chk('proband') && ep.proband !== sp.proband) probs.push(ep.proband ? 'is the proband, so needs the arrow with its P' : 'is not the proband');
       if (probs.length) {
         items.push({ level: 'wrong', text: `${name} ${joinList(probs)}.`, ids: [s], e });
         issueIds.add(s);
@@ -322,7 +322,7 @@
       const st = S.twins.find((x) => (x.a === a && x.b === b) || (x.a === b && x.b === a));
       const names = `${label(t.a)} and ${label(t.b)}`;
       if (!st) items.push({ level: 'wrong', text: `${names} are ${t.type === 'identical' ? 'identical' : 'non-identical'} twins: join them with the Twins tool.`, ids: [a, b] });
-      else if (st.type !== t.type) items.push({ level: 'wrong', text: `${names} are ${t.type === 'identical' ? 'identical twins: they need the bar between the twin lines' : 'non-identical twins: remove the bar between the twin lines'}.`, ids: [a, b] });
+      else if (st.type !== t.type) items.push({ level: 'wrong', text: `${names} are ${t.type === 'identical' ? 'identical twins: they need the bar between the twin lines' : 'non-identical twins: their lines meet at one point with no bar or question mark between them'}.`, ids: [a, b] });
     });
 
     // 6. people drawn who are not in this family
