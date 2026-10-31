@@ -24,6 +24,15 @@
 //      cannot add to the page, run code or fetch anything, as Pedigree
 //      Studio's pull request #7 does (cleanSession() and the helpers above
 //      it); the code it changes was the same here, so it is copied as it is.
+//   6. From Pedigree Studio's pull request #8, copied as it is where the
+//      code was the same: the proband's arrow carries a P and a consultand
+//      has the arrow alone (toggleConsultand()); twins can be of unknown
+//      zygosity, with a ? between their lines; G marks a gestational
+//      carrier (the 2025 correction to the nomenclature); Clear the canvas
+//      empties Undo and Redo too; and markOldFlexbox() lets browsers from
+//      before 2021, which lay out flex boxes without gap, have margins
+//      instead. That pull request's changes to the Studio's help and to its
+//      bounds for Fit (contentBounds) have no counterpart here.
 // Everything else is unchanged.
 // ═════════════════════════════════════════════════════════════════════
 
@@ -36,6 +45,20 @@ function getPointerPos(e) {
   if (e.changedTouches && e.changedTouches.length > 0) return { clientX: e.changedTouches[0].clientX, clientY: e.changedTouches[0].clientY };
   return { clientX: e.clientX, clientY: e.clientY };
 }
+
+// Browsers from before the spring of 2021 (Chrome 83, Safari 14.0 and older) lay out flex boxes
+// without the gap between their items. Two empty boxes 1px apart show whether this one does;
+// if not, html gets no-flex-gap and the CSS puts margins in the gaps' place.
+function markOldFlexbox() {
+  const box = document.createElement('div');
+  box.style.cssText = 'display:flex;flex-direction:column;row-gap:1px;position:absolute;visibility:hidden';
+  box.appendChild(document.createElement('div'));
+  box.appendChild(document.createElement('div'));
+  document.body.appendChild(box);
+  if (box.scrollHeight !== 1) document.documentElement.classList.add('no-flex-gap');
+  box.remove();
+}
+markOldFlexbox();
 
 // ── State ──
 let currentTool = 'move';
@@ -160,7 +183,8 @@ function cleanSession(data) {
     const pid = own(pd.id);
     if (pid) persons.push({
       id: pid, shape: name(pd.shape, 40), x: coord(pd.x), y: coord(pd.y),
-      text: text(pd.text, 5000), deceased: !!pd.deceased, proband: !!pd.proband, affected: !!pd.affected,
+      text: text(pd.text, 5000), deceased: !!pd.deceased, proband: !!pd.proband, consultand: !!pd.consultand,
+      affected: !!pd.affected,
       fillMode: oneOf(pd.fillMode, ['none', 'solid', 'half', 'quartered', 'shading'], undefined),
       fillColor: safeColor(pd.fillColor, undefined),
       quarters: colours(pd.quarters, 4), halves: colours(pd.halves, 2),
@@ -1087,10 +1111,18 @@ function computeTwinBarD(type, forkX, branchY, cc1x, cc2x, c1Top, c2Top) {
   const b2x = forkX + (cc2x - forkX) * f, b2y = branchY + (c2Top - branchY) * f;
   return `M ${b1x} ${b1y} L ${b2x} ${b2y}`;
 }
+// Twins whose zygosity is not known have a question mark where identical twins' bar would be
+function twinMarkPos(forkX, branchY, c1Top, c2Top) {
+  return { x: forkX, y: branchY + ((c1Top + c2Top) / 2 - branchY) * 0.5 };
+}
 
 // ── Proband arrow path d-string (in viewBox 0 0 18 18) ──
 
 const PROBAND_ARROW_D = 'M2 16L16 2 M16 2L9 2 M16 2L16 9';
+// The proband's P, to the left of the arrow's tail: its centre and baseline relative to the symbol's top left
+// (the arrow's box starts 18 px left of the symbol and 54 px below its top)
+const PROBAND_P = { x: -24, y: 74, size: 11 };
+function hasArrow(p) { return !!(p.proband || p.consultand); }
 
 // ══════════════════════════════════════════
 // SHAPE SVG RENDERING (uses shared geometry)
@@ -1258,7 +1290,7 @@ function addPerson(customId, customX, customY, customShape, customText, customDe
     el.appendChild(msEl);
   }
 
-  if (customProband) { el.classList.add('proband'); addProbandArrow(el); }
+  if (customProband) { el.classList.add('proband'); addProbandArrow(el, true); }
 
   // Delete
   const del = document.createElement('button');
@@ -1326,14 +1358,21 @@ function addPerson(customId, customX, customY, customShape, customText, customDe
   return personData;
 }
 
-function addProbandArrow(el) {
+// The arrow at the lower left: with a P for the proband, alone for a consultand
+function addProbandArrow(el, withP) {
   const existing = el.querySelector('.proband-arrow');
   if (existing) existing.remove();
   const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   arrow.setAttribute('class', 'proband-arrow');
-  arrow.setAttribute('viewBox', '0 0 18 18');
-  arrow.innerHTML = `<path d="${PROBAND_ARROW_D}" stroke="${STROKE_COLOR}" stroke-width="1.8" fill="none"/>`;
+  arrow.setAttribute('viewBox', '-12 0 30 22');
+  arrow.innerHTML = `<path d="${PROBAND_ARROW_D}" stroke="${STROKE_COLOR}" stroke-width="1.8" fill="none"/>` + (withP ?
+    `<text x="${PROBAND_P.x + 18}" y="${PROBAND_P.y - 54}" text-anchor="middle" font-size="${PROBAND_P.size}" font-weight="700" fill="${STROKE_COLOR}" font-family="-apple-system,sans-serif">P</text>` : '');
   el.appendChild(arrow);
+}
+function refreshArrow(p) {
+  p.el.classList.toggle('proband', !!p.proband);
+  if (hasArrow(p)) addProbandArrow(p.el, !!p.proband);
+  else { const arr = p.el.querySelector('.proband-arrow'); if (arr) arr.remove(); }
 }
 
 function removePerson(id) {
@@ -1466,6 +1505,7 @@ function showProps(p) {
   document.getElementById('personText').value = p.text || '';
   document.getElementById('deceasedToggle').className = 'toggle-switch' + (p.deceased ? ' on' : '');
   document.getElementById('probandToggle').className = 'toggle-switch' + (p.proband ? ' on' : '');
+  document.getElementById('consultandToggle').className = 'toggle-switch' + (p.consultand ? ' on' : '');
   document.getElementById('noSnapToggle').className = 'toggle-switch' + (p.noSnap ? ' on' : '');
 
   // Center text buttons
@@ -1641,15 +1681,25 @@ function toggleProband() {
   const p = persons.get(selectedPerson);
   if (!p) return;
   persons.forEach(op => {
-    if (op.id !== p.id && op.proband) {
-      op.proband = false; op.el.classList.remove('proband');
-      const arr = op.el.querySelector('.proband-arrow'); if (arr) arr.remove();
-    }
+    if (op.id !== p.id && op.proband) { op.proband = false; refreshArrow(op); }
   });
   p.proband = !p.proband;
   document.getElementById('probandToggle').className = 'toggle-switch' + (p.proband ? ' on' : '');
-  if (p.proband) { p.el.classList.add('proband'); addProbandArrow(p.el); }
-  else { p.el.classList.remove('proband'); const arr = p.el.querySelector('.proband-arrow'); if (arr) arr.remove(); }
+  refreshArrow(p);
+  updateTextWrapping();
+  scheduleSave();
+}
+
+// A consultand (someone seeking advice or testing) has the arrow without the P; there may be several
+function toggleConsultand() {
+  if (!selectedPerson) return;
+  pushUndo();
+  const p = persons.get(selectedPerson);
+  if (!p) return;
+  p.consultand = !p.consultand;
+  document.getElementById('consultandToggle').className = 'toggle-switch' + (p.consultand ? ' on' : '');
+  refreshArrow(p);
+  updateTextWrapping();
   scheduleSave();
 }
 
@@ -1680,7 +1730,7 @@ function refreshPersonShape(p) {
   const delBtn = shapeDiv.querySelector('.delete-btn');
   shapeDiv.innerHTML = makeShapeSVG(p.shape, p.deceased, p.fillMode, p.fillColor, p.quarters, p.centerText, p.halves, p.shadingPattern, p.shadingCoverage);
   if (delBtn) shapeDiv.appendChild(delBtn);
-  if (p.proband) addProbandArrow(p.el);
+  if (hasArrow(p)) addProbandArrow(p.el, !!p.proband);
   // Manage miscarriage sex label
   let msEl = p.el.querySelector('.miscarriage-sex');
   if (p.shape === 'miscarriage') {
@@ -4464,13 +4514,26 @@ function addTwinLink(child1Id, child2Id, type, customId) {
 
   svg.appendChild(twinPath);
   const tl = { id, child1Id, child2Id, type: type || 'identical', partnershipId: sharedPship, els: [twinPath] };
+  if (tl.type === 'unknown') {  // (zygosity not known: a question mark where the bar would be)
+    const mark = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    mark.setAttribute('class', 'twin-mark');
+    mark.setAttribute('text-anchor', 'middle');
+    mark.setAttribute('dominant-baseline', 'central');
+    mark.setAttribute('font-size', '14');
+    mark.setAttribute('font-weight', '700');
+    mark.setAttribute('fill', STROKE_COLOR);
+    mark.style.pointerEvents = 'none';
+    mark.textContent = '?';
+    svg.appendChild(mark);
+    tl.els.push(mark);
+  }
   twinLinks.push(tl);
   updateTwinLinkPos(tl);
   // Re-render the child links for both twins to show diagonal paths
   childLinks.filter(cl => cl.childId === child1Id || cl.childId === child2Id).forEach(cl => updateChildLinkPos(cl));
   if (!loadingDrawing) updateNumbering();  // (restoreSession() numbers everyone once, at the end)
   scheduleSave();
-  document.getElementById('statusBar').textContent = (type === 'identical' ? 'Identical' : 'Non-identical') + ' twins linked!';
+  document.getElementById('statusBar').textContent = tl.type === 'unknown' ? 'Twins linked (zygosity not known)!' : (type === 'identical' ? 'Identical' : 'Non-identical') + ' twins linked!';
 }
 
 function removeTwinLink(id) {
@@ -4501,6 +4564,11 @@ function updateTwinLinkPos(tl) {
   const branchY = Math.max(midY + 4, (c1Top + c2Top) / 2 - SHAPE_HALF);
 
   tl.els[0].setAttribute('d', computeTwinBarD(tl.type, forkX, branchY, cc1.x, cc2.x, c1Top, c2Top));
+  if (tl.els[1]) {
+    const m = twinMarkPos(forkX, branchY, c1Top, c2Top);
+    tl.els[1].setAttribute('x', m.x);
+    tl.els[1].setAttribute('y', m.y);
+  }
 }
 
 // ══════════════════════
@@ -5149,7 +5217,7 @@ function updateTextWrapping() {
 
     if (isLeftPartner) {
       textEl.classList.add('text-left');
-      textEl.classList.toggle('proband-left', !!p.proband);
+      textEl.classList.toggle('proband-left', hasArrow(p));
     } else {
       textEl.classList.remove('text-left', 'proband-left');
     }
@@ -5680,8 +5748,7 @@ document.addEventListener('keydown', (e) => {
 // ══════════════════════
 
 function clearAll() {
-  if (!confirm('Remove everything from the canvas?')) return;
-  pushUndo();
+  if (!confirm('Remove everything from the canvas? This cannot be undone.')) return;
   document.getElementById('canvas').querySelectorAll('.person, .label, .legend-box').forEach(el => el.remove());
   document.getElementById('lines-layer').innerHTML = '';
   document.getElementById('draw-layer').innerHTML = '';
@@ -5704,6 +5771,10 @@ function clearAll() {
   document.getElementById('multiPartnershipPanel').classList.remove('visible');
   document.getElementById('multiChildLinkPanel').classList.remove('visible');
   try { localStorage.removeItem(PS_SESSION_KEY); } catch(e) {}
+  // Clearing is final: the pedigree goes from Undo and Redo too, so that no one who uses
+  // this browser afterwards can bring it back
+  undoStack.length = 0; redoStack.length = 0;
+  updateUndoRedoUI();
   document.getElementById('statusBar').textContent = 'Canvas cleared';
 }
 
@@ -5725,7 +5796,7 @@ function buildSessionData() {
     personArr.push({
       id: p.id, shape: p.shape,
       x: parseFloat(p.el.style.left), y: parseFloat(p.el.style.top),
-      text: p.text, deceased: p.deceased, proband: p.proband,
+      text: p.text, deceased: p.deceased, proband: p.proband, consultand: !!p.consultand,
       fillMode: p.fillMode, fillColor: p.fillColor, quarters: [...p.quarters],
       halves: [...(p.halves || [null, null])],
       shadingPattern: p.shadingPattern || 'stripes',
@@ -5803,6 +5874,7 @@ function restoreSession(data) {
       if (pd.noSnap) { const pp = persons.get(pd.id); if (pp) pp.noSnap = true; }
       if (pd.siblingFixed) { const pp = persons.get(pd.id); if (pp) pp.siblingFixed = true; }
       if (pd.customLabel) { const pp = persons.get(pd.id); if (pp) pp.customLabel = pd.customLabel; }
+      if (pd.consultand) { const pp = persons.get(pd.id); if (pp) { pp.consultand = true; refreshArrow(pp); } }
       const n = parseInt(pd.id.split('-')[1]) || 0; if (n < 1e9 && n > personIdCounter) personIdCounter = n;
     });
     (data.labels || []).forEach(ld => {
@@ -6115,6 +6187,13 @@ function saveAsImage() {
     const branchY = Math.max(midY + 4, (c1Top + c2Top) / 2 - SHAPE_HALF);
     const d = computeTwinBarD(tl.type, forkX, branchY, cc1.x, cc2.x, c1Top, c2Top);
     if (d) strokePathD(d);
+    if (tl.type === 'unknown') {
+      const m = twinMarkPos(forkX, branchY, c1Top, c2Top);
+      ctx.save(); ctx.fillStyle = STROKE_COLOR; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = "700 14px -apple-system, 'Segoe UI', system-ui, Helvetica, sans-serif";
+      ctx.fillText('?', m.x, m.y);
+      ctx.restore();
+    }
   });
 
   // ── Draw persons (uses shared shape geometry via Path2D) ──
@@ -6230,12 +6309,17 @@ function saveAsImage() {
     }
     ctx.restore();
 
-    // Proband arrow
-    if (p.proband) {
+    // Proband's or consultand's arrow, and the proband's P
+    if (hasArrow(p)) {
       ctx.save(); ctx.strokeStyle = STROKE_COLOR; ctx.lineWidth = 1.8;
       ctx.beginPath(); ctx.moveTo(x - 16, y + 70); ctx.lineTo(x - 2, y + 56); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(x - 2, y + 56); ctx.lineTo(x - 9, y + 56); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(x - 2, y + 56); ctx.lineTo(x - 2, y + 63); ctx.stroke();
+      if (p.proband) {
+        ctx.fillStyle = STROKE_COLOR; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+        ctx.font = `700 ${PROBAND_P.size}px -apple-system, 'Segoe UI', system-ui, Helvetica, sans-serif`;
+        ctx.fillText('P', x + PROBAND_P.x, y + PROBAND_P.y);
+      }
       ctx.restore();
     }
 
@@ -6274,7 +6358,7 @@ function saveAsImage() {
       if (isLeftPartner) {
         // Mirrors the default x + 30: ends 30px in from the shape's right edge (matches .text-left).
         ctx.textAlign = 'right';
-        const textY = p.proband ? y + 74 : y + 56;
+        const textY = hasArrow(p) ? y + 74 : y + 56;
         p.text.split('\n').forEach((line, i) => { ctx.fillText(line, x + SHAPE_SIZE - 30, textY + i * 15); });
       } else {
         ctx.textAlign = 'left';
@@ -6522,6 +6606,10 @@ function buildPedigreeSVG() {
     const branchY = Math.max(midY + 4, (c1Top + c2Top) / 2 - SHAPE_HALF);
     const d = computeTwinBarD(tl.type, forkX, branchY, cc1.x, cc2.x, c1Top, c2Top);
     if (d) els.push(`<path d="${d}" stroke="${STROKE_COLOR}" stroke-width="${STROKE_W}" fill="none"/>`);
+    if (tl.type === 'unknown') {
+      const m = twinMarkPos(forkX, branchY, c1Top, c2Top);
+      els.push(`<text x="${m.x}" y="${m.y}" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="700" fill="${STROKE_COLOR}" font-family="${FONT}">?</text>`);
+    }
   });
 
   // ── Persons ──
@@ -6611,9 +6699,10 @@ function buildPedigreeSVG() {
       }
     }
 
-    // Proband arrow
-    if (p.proband) {
+    // Proband's or consultand's arrow, and the proband's P
+    if (hasArrow(p)) {
       g.push(`<path d="M${x-16} ${y+70}L${x-2} ${y+56} M${x-2} ${y+56}L${x-9} ${y+56} M${x-2} ${y+56}L${x-2} ${y+63}" stroke="${STROKE_COLOR}" stroke-width="1.8" fill="none"/>`);
+      if (p.proband) g.push(`<text x="${x + PROBAND_P.x}" y="${y + PROBAND_P.y}" text-anchor="middle" font-size="${PROBAND_P.size}" font-weight="700" fill="${STROKE_COLOR}" font-family="${FONT}">P</text>`);
     }
 
     // Number label
@@ -6647,7 +6736,7 @@ function buildPedigreeSVG() {
       const lines = p.text.split('\n');
       if (isLeftPartner) {
         // Mirrors the default x + 30: ends 30px in from the shape's right edge (matches .text-left).
-        const baseY = p.proband ? y + 74 : y + 56;
+        const baseY = hasArrow(p) ? y + 74 : y + 56;
         lines.forEach((line, i) => {
           g.push(`<text x="${x + SHAPE_SIZE - 30}" y="${baseY + i * 15}" text-anchor="end" dominant-baseline="hanging" font-size="11" fill="${STROKE_COLOR}" font-family="${FONT}">${esc(line)}</text>`);
         });
@@ -6881,6 +6970,7 @@ const PSL = (() => {
         sex: sexOf(p.shape),
         pinned: !!p.noSnap,
         proband: !!p.proband,
+        arrow: hasArrow(p),
         textW: tm.w, textH: tm.h,
         origin: null,          // couple id this person is a child of
         couples: [],           // couple ids this person is a partner in
@@ -8383,7 +8473,7 @@ const PSL = (() => {
       let h = 0;
       rows[r].forEach(it => it.seq.forEach(m => {
         const p = people.get(m);
-        if (p && p.textH) h = Math.max(h, p.textH + (p.proband && p.textLeft ? 18 : 0));
+        if (p && p.textH) h = Math.max(h, p.textH + (p.arrow && p.textLeft ? 18 : 0));
       }));
       const need = 56 + h + 12 + SHAPE_HALF + levels[r + 1] * cfg.busStep;
       rowY.push(rowY[r] + Math.max(cfg.rowGap, need));

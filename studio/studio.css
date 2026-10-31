@@ -173,7 +173,8 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.92em;
 .person-text.text-left { left: auto; right: 30px; text-align: right; }
 .person-text.text-left.proband-left { top: 74px; }
 .miscarriage-sex { position: absolute; top: 56px; left: 50%; transform: translateX(-50%); font-size: 9px; font-weight: 600; color: var(--text-muted); white-space: nowrap; pointer-events: none; text-transform: uppercase; letter-spacing: 0.5px; }
-.proband-arrow { position: absolute; top: 54px; left: -18px; width: 18px; height: 18px; pointer-events: none; }
+/* the proband's or a consultand's arrow, below left of the symbol, with the proband's P beside it */
+.proband-arrow { position: absolute; top: 54px; left: -30px; width: 30px; height: 22px; pointer-events: none; }
 
 /* practical edition: picking and highlighting people */
 .person.picked .shape-border { stroke: var(--pick) !important; stroke-width: 4 !important; stroke-dasharray: none !important; }
@@ -234,7 +235,7 @@ textarea.legend-input { display: block; resize: none; overflow: hidden; white-sp
 .zoom-btn:hover { background: var(--bg); }
 .zoom-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; }
 .zoom-label { padding: 0 8px; height: 34px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text-muted); font-size: 12px; font-weight: 600; display: flex; align-items: center; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
-.empty-hint { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; pointer-events: none; z-index: 5; padding: 20px; }
+.empty-hint { position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: grid; place-items: center; text-align: center; pointer-events: none; z-index: 5; padding: 20px; }
 .empty-hint svg { width: 120px; height: 70px; fill: none; stroke: #b9c3cf; stroke-width: 2; margin-bottom: 8px; }
 .empty-hint p { color: var(--text-muted); font-size: 13px; line-height: 1.5; max-width: 320px; }
 .empty-hint b { color: var(--text); }
@@ -307,7 +308,7 @@ textarea.legend-input { display: block; resize: none; overflow: hidden; white-sp
 }
 
 /* ── Help ── */
-.help-back { position: fixed; inset: 0; z-index: 900; background: rgba(15,23,32,0.42); display: grid; place-items: center; padding: 16px; }
+.help-back { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 900; background: rgba(15,23,32,0.42); display: grid; place-items: center; padding: 16px; }
 .help-card { position: relative; background: #fff; border-radius: 12px; max-width: 560px; width: 100%; max-height: 92vh; overflow: auto; padding: 20px 22px 18px; box-shadow: 0 20px 60px rgba(0,0,0,0.25); }
 .help-card h2 { font-size: 18px; margin-bottom: 10px; }
 .help-steps { padding-left: 20px; display: grid; gap: 7px; line-height: 1.5; font-size: 13px; color: #384355; }
@@ -319,3 +320,23 @@ textarea.legend-input { display: block; resize: none; overflow: hidden; white-sp
 .sib-move .pbtn { flex: 1; padding: 3px 6px; font-size: 11px; }
 .flash-ctl { animation: flashctl 1.2s ease 2; border-radius: 7px; }
 @keyframes flashctl { 0%, 100% { box-shadow: none; } 40%, 60% { box-shadow: 0 0 0 3px #ffb347, 0 0 12px #ffb347; } }
+
+/* Browsers from before the spring of 2021 (Chrome 83, Safari 14.0 and older) leave out the gap
+   between the things in a flex box. The page marks them with no-flex-gap (markOldFlexbox() in
+   engine.js) and these margins put the same spaces in, as in Pedigree Studio. */
+.no-flex-gap .st-bar > * + * { margin-left: 4px; }
+.no-flex-gap .st-group > * + * { margin-left: 2px; }
+.no-flex-gap .st-btn > * + * { margin-top: 1px; }
+.no-flex-gap .qa-btn > svg { margin-bottom: 1px; }
+.no-flex-gap .st-pop > button > svg { margin-right: 10px; }
+.no-flex-gap .pop-row > * + *, .no-flex-gap .draw-settings-row > * + * { margin-left: 6px; }
+.no-flex-gap .pop-row > *, .no-flex-gap .draw-settings-row > * { margin-bottom: 6px; }
+.no-flex-gap .insp-h > * { margin-left: 6px; }
+.no-flex-gap .toggle-row > * + *, .no-flex-gap .legend-row > * + * { margin-left: 8px; }
+.no-flex-gap .zoom-controls > * + *, .no-flex-gap .shading-option-row > * + *, .no-flex-gap .fill-colors > * + *,
+.no-flex-gap .sib-move > .pbtn + .pbtn { margin-left: 4px; }
+.no-flex-gap .fill-colors > *, .no-flex-gap .sib-move > span { margin-bottom: 4px; }
+.no-flex-gap .ct-row > * + * { margin-left: 3px; }
+.no-flex-gap .ct-row > * { margin-bottom: 3px; }
+@media (max-width: 820px) { .no-flex-gap .st-bar > * + * { margin-left: 2px; } }
+@media (max-width: 699px) { .no-flex-gap .st-bar > * + * { margin-left: 1px; } }

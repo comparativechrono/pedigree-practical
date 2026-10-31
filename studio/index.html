@@ -168,8 +168,12 @@
         <button class="toggle-switch" type="button" id="deceasedToggle" onclick="toggleDeceased()" aria-label="Deceased"></button>
       </div>
       <div class="toggle-row">
-        <label onclick="toggleProband()">Proband (arrow)</label>
+        <label onclick="toggleProband()">Proband (arrow and P)</label>
         <button class="toggle-switch" type="button" id="probandToggle" onclick="toggleProband()" aria-label="Proband"></button>
+      </div>
+      <div class="toggle-row">
+        <label onclick="toggleConsultand()">Consultand (arrow)</label>
+        <button class="toggle-switch" type="button" id="consultandToggle" onclick="toggleConsultand()" aria-label="Consultand"></button>
       </div>
 
       <div class="lbl">Shading (affected)</div>
@@ -223,6 +227,7 @@
         <button class="ct-btn" type="button" data-ct="dot" onclick="setCenterText('dot')" title="Carrier: carries the variant but is unaffected">● Carrier</button>
         <button class="ct-btn" type="button" data-ct="P" onclick="setCenterText('P')" title="P: a current pregnancy">P</button>
         <button class="ct-btn" type="button" data-ct="D" onclick="setCenterText('D')" title="D: egg or sperm donor">D</button>
+        <button class="ct-btn" type="button" data-ct="G" onclick="setCenterText('G')" title="G: gestational carrier, who carries a pregnancy to which they have no genetic link">G</button>
         <span class="ct-num" title="Several people in one symbol: type how many (or n if not known)">
           <input type="text" id="ctNumber" maxlength="2" placeholder="3" aria-label="Number of people in this symbol"><button class="ct-btn" type="button" id="ctNumberBtn">Number</button>
         </span>
@@ -360,9 +365,10 @@
     <section class="panel-section" id="twinPanel">
       <h3 class="insp-h">Twins</h3>
       <p class="pop-note">Click two children of the same couple.</p>
-      <div class="seg2">
+      <div class="seg3">
         <button class="pbtn active" type="button" data-tt="identical" onclick="setTwinType('identical')">Identical (monozygotic)</button>
         <button class="pbtn" type="button" data-tt="nonidentical" onclick="setTwinType('nonidentical')">Non-identical (dizygotic)</button>
+        <button class="pbtn" type="button" data-tt="unknown" onclick="setTwinType('unknown')" title="Zygosity not known">Not known (?)</button>
       </div>
     </section>
 
@@ -393,7 +399,7 @@
     <ol class="help-steps">
       <li><b>Add the first person</b> with <b>Male</b>, <b>Female</b> or <b>Unknown</b> on the toolbar. This is usually the proband: turn on <b>Proband</b> in the panel that opens.</li>
       <li><b>Build out from them.</b> With a person selected, <b>Add a relative</b> adds a partner, children, parents or brothers and sisters, already joined up, and lays the pedigree out again to make room.</li>
-      <li><b>Join people yourself</b> with the tools under <b>Connect</b>. <b>Partners</b>: click two people. <b>Child</b>: click a relationship line, then the child. <b>Twins</b>: click two children of the same couple.</li>
+      <li><b>Join people yourself</b> with the tools under <b>Connect</b>. <b>Partners</b>: click two people. <b>Child</b>: click a relationship line, then the child. <b>Twins</b>: choose identical, non-identical or not known, then click two children of the same couple.</li>
       <li><b>Describe each person</b> in the panel: notes under the symbol (name, age, diagnoses with age at diagnosis), deceased, shading for affected, and symbols inside (carrier dot, P for pregnancy, a number for several people).</li>
       <li><b>Add a key</b> with <b>Key</b>: a box listing the colours in use, into which you type what each one means. Under <b>File</b>, a long entry can widen the key or wrap onto more lines; drag the right edge of a key that wraps to make it wider or narrower.</li>
       <li><b>Click a line</b> to change it: relationship lines can be consanguineous or separated, and a line of descent can be dashed for adoption.</li>
