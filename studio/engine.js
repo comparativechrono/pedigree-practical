@@ -1551,8 +1551,8 @@ function addPerson(customId, customX, customY, customShape, customText, customDe
   persons.set(id, personData);
 
   if (!loadingDrawing) {  // (when a drawing is opened, restoreSession() does these once, after its last person)
-    updateNumbering();
-    updateTextWrapping();
+    writeNumbers();
+    updateTextWrapping();  // (which places the numbers, once)
     expandCanvasIfNeeded();
   }
   scheduleSave();
@@ -3424,8 +3424,8 @@ function protectDraggedGroupFromOverlap(dragIds, origins) {
 
 function syncAfterDefaultPlacement() {
   updateAllConnections();
-  updateNumbering();
-  updateTextWrapping();
+  writeNumbers();
+  updateTextWrapping();  // (which places the numbers, once)
   expandCanvasIfNeeded();
 }
 
@@ -5351,8 +5351,8 @@ function onPointerUp(e) {
       protectDraggedGroupFromOverlap(finalDragIds, finalOrigins);
       updateAllConnections();
     }
-    updateNumbering();
-    updateTextWrapping();
+    writeNumbers();
+    updateTextWrapping();  // (which places the numbers, once)
     expandCanvasIfNeeded();
     scheduleSave();
   }
@@ -5662,7 +5662,14 @@ function placeNumbers() {
     const notes = t && p.text && t.offsetHeight ? { x: t.offsetLeft, y: t.offsetTop, w: t.offsetWidth, h: t.offsetHeight, left: t.classList.contains('text-left') } : null;
     people.push({ p, ne, x: parseFloat(p.el.style.left), y: parseFloat(p.el.style.top), notes, w: ne.offsetWidth, h: ne.offsetHeight || NUMBER_LINE });
   });
-  const segs = people.length ? drawnLineSegments() : [];
+  // the lines drawn, by 128-px column, so that a number is checked only against the lines near it
+  const segCols = new Map();
+  (people.length ? drawnLineSegments() : []).forEach(sg => {
+    for (let c = Math.floor(Math.min(sg[0], sg[2]) / 128); c <= Math.floor(Math.max(sg[0], sg[2]) / 128); c++) {
+      if (!segCols.has(c)) segCols.set(c, []);
+      segCols.get(c).push(sg);
+    }
+  });
   const symbols = [];
   persons.forEach(p => {
     const x = parseFloat(p.el.style.left), y = parseFloat(p.el.style.top);
@@ -5691,7 +5698,12 @@ function placeNumbers() {
       if (hasSexLabel(p)) ny += SEX_LABEL_H;
       if (hasArrow(p) && nx < 2) ny = Math.max(ny, 78);
     }
-    const lineThrough = (X1, Y1, X2, Y2) => segs.some(sg => segmentHitsBox(sg, X1, Y1, X2, Y2));
+    const lineThrough = (X1, Y1, X2, Y2) => {
+      for (let c = Math.floor(X1 / 128); c <= Math.floor(X2 / 128); c++) {
+        if ((segCols.get(c) || []).some(sg => segmentHitsBox(sg, X1, Y1, X2, Y2))) return true;
+      }
+      return false;
+    };
     const othersAt = (X1, Y1, X2, Y2) => inTheWay.find(b => b.id !== p.id && b.x1 < X2 && b.x2 > X1 && b.y1 < Y2 && b.y2 > Y1);
     const symbolAt = (X1, Y1, X2, Y2) => symbols.some(b => b.id !== p.id && b.x1 < X2 && b.x2 > X1 && b.y1 < Y2 && b.y2 > Y1);
     // in the way: someone else's notes, number, arrow or symbol, or a line across the number or between it and the
@@ -6135,8 +6147,8 @@ document.addEventListener('keydown', (e) => {
         p.y = newY;
       });
       updateAllConnections();
-      updateNumbering();
-      updateTextWrapping();
+      writeNumbers();
+      updateTextWrapping();  // (which places the numbers, once)
       expandCanvasIfNeeded();
     }
     if (hasLabel) {
@@ -6342,8 +6354,8 @@ function restoreSession(data) {
   }
   document.getElementById('zoomLabel').textContent = Math.round(zoomLevel * 100) + '%';
   applyTransform();
-  updateNumbering();
-  updateTextWrapping();
+  writeNumbers();
+  updateTextWrapping();  // (which places the numbers, once)
   expandCanvasIfNeeded();
 
   // Restore legend if it was visible
@@ -9111,9 +9123,9 @@ function managedSetPersonPos(personData, x, y) {
 
 function runManagedPedigreeLayout(options) {
   if (persons.size === 0) {
-    updateTextWrapping();
     updateAllConnections();
-    updateNumbering();
+    writeNumbers();
+    updateTextWrapping();  // (which places the numbers, once, against the lines as they now are)
     return;
   }
   if (typeof normalizeRelatedPartnershipTypes === 'function') normalizeRelatedPartnershipTypes();
@@ -9128,9 +9140,9 @@ function runManagedPedigreeLayout(options) {
     res.laid.forEach(L => (L.R.childOffset || new Map()).forEach((v, k) => offsets.set(k, v)));
     childLinks.forEach(cl => { cl.branchYOffset = offsets.get(cl.childId + '|' + cl.partnershipId) || 0; });
   }
-  updateTextWrapping();
   updateAllConnections();
-  updateNumbering();
+  writeNumbers();
+  updateTextWrapping();  // (which places the numbers, once, against the lines as they now are)
   expandCanvasIfNeeded();
   scheduleSave();
 }
