@@ -51,6 +51,11 @@
 //      be drawn leaves the drawing as it was. The help's symbol table,
 //      contentBounds and the keyboard names for the grids have no
 //      counterpart here.
+//   8. From Pedigree Studio's pull request #10, copied as it is: only people
+//      are numbered (writeNumbers()). The bars for no children and
+//      infertility have no number or label of their own and do not count in
+//      their row, and a label a bar has from an older file is kept in the
+//      saved drawing (buildSessionData()).
 // Everything else is unchanged.
 // ═════════════════════════════════════════════════════════════════════
 
@@ -5730,7 +5735,16 @@ function placeNumbers() {
   });
 }
 
+// Pedigree numbers (or letters, or labels of your own) for people only. The nomenclature numbers individuals
+// (Bennett et al. 2022), and the bars for no children and infertility are not people, so they have none and do not
+// count in their row. (studio2ped, studio2ga4gh and the workbench's Risk tab number a drawing the same way.)
 function writeNumbers() {
+  const numbered = [];
+  persons.forEach(p => {
+    if (!isLineShape(p.shape)) { numbered.push(p); return; }
+    const ne = p.el.querySelector('.person-number');
+    if (ne) { ne.textContent = ''; ne.contentEditable = 'false'; ne.classList.remove('editable'); }
+  });
   if (numberingMode === 'off') {
     persons.forEach(p => {
       const ne = p.el.querySelector('.person-number');
@@ -5739,7 +5753,7 @@ function writeNumbers() {
     return;
   }
   if (numberingMode === 'freetext') {
-    persons.forEach(p => {
+    numbered.forEach(p => {
       const ne = p.el.querySelector('.person-number');
       if (!ne) return;
       ne.textContent = p.customLabel;
@@ -5801,9 +5815,8 @@ function writeNumbers() {
     const ne = p.el.querySelector('.person-number');
     if (ne) { ne.contentEditable = 'false'; ne.classList.remove('editable'); }
   });
-  if (persons.size === 0) return;
-  const list = [];
-  persons.forEach(p => { list.push({ id: p.id, x: parseFloat(p.el.style.left), y: parseFloat(p.el.style.top) }); });
+  if (!numbered.length) return;
+  const list = numbered.map(p => ({ id: p.id, x: parseFloat(p.el.style.left), y: parseFloat(p.el.style.top) }));
   list.sort((a, b) => a.y - b.y);
 
   const generations = [];
@@ -6210,11 +6223,11 @@ function clearAll() {
 
 function buildSessionData() {
   normalizeRelatedPartnershipTypes();
-  // Sync freetext labels from DOM before saving
+  // Sync freetext labels from DOM before saving (a bar shows none, so a label it has from an older file is kept as it was)
   if (numberingMode === 'freetext') {
     persons.forEach(p => {
       const ne = p.el.querySelector('.person-number');
-      if (ne && ne.textContent !== undefined) p.customLabel = ne.textContent.trim();
+      if (ne && ne.textContent !== undefined && !isLineShape(p.shape)) p.customLabel = ne.textContent.trim();
     });
   }
   const personArr = [];
