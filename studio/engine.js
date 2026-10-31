@@ -33,6 +33,29 @@
 //      before 2021, which lay out flex boxes without gap, have margins
 //      instead. That pull request's changes to the Studio's help and to its
 //      bounds for Fit (contentBounds) have no counterpart here.
+//   7. From Pedigree Studio's pull request #9, copied as it is where the
+//      code was the same: thirds for three conditions (thirdsGeom() and
+//      Thirds in the panels); twins, triplets and more drawn from one point
+//      (twinGroup(), twinFork(), twinLinkDecor(), and unlinkTwin() when one
+//      is removed), kept together by Tidy; pedigree numbers below the symbol,
+//      under the notes (placeNumbers()), with room left for them by Tidy; and
+//      a pregnancy loss's notes below its sex. Then the fixes from its
+//      independent check: a number goes to the lower right of the symbol
+//      where a line, a symbol, someone else's notes or the proband's arrow
+//      is in the way (drawnLineSegments()); every pair of neighbours in a
+//      multiple birth gets its bar or ? (twinPairType()); Tidy orders small
+//      multiple births to show each link's zygosity, places a group with
+//      someone in a free position where they are, and pushes no further
+//      than an overlap in its last resort (separate()); deleting lines of
+//      descent takes children out of their twins; and a file that cannot
+//      be drawn leaves the drawing as it was. The help's symbol table,
+//      contentBounds and the keyboard names for the grids have no
+//      counterpart here.
+//   8. From Pedigree Studio's pull request #10, copied as it is: only people
+//      are numbered (writeNumbers()). The bars for no children and
+//      infertility have no number or label of their own and do not count in
+//      their row, and a label a bar has from an older file is kept in the
+//      saved drawing (buildSessionData()).
 // Everything else is unchanged.
 // ═════════════════════════════════════════════════════════════════════
 
@@ -80,6 +103,7 @@ let panState = null;
 let currentLabelSize = 14;
 let activeQuarter = -1; // which quarter is being edited
 let activeHalf = -1;   // which half is being edited (0=left, 1=right)
+let activeThird = -1;  // which third is being edited (0=top right, 1=bottom, 2=top left)
 
 const SHAPE_SIZE = 52;
 const SHAPE_HALF = 26;
@@ -103,6 +127,7 @@ const multiSelectedPartnerships = new Set();
 const multiSelectedChildLinks = new Set();
 let multiActiveQuarter = -1;
 let multiActiveHalf = -1;
+let multiActiveThird = -1;
 let legendLabels = {};
 let numberingMode = 'numbers';
 let currentPartnershipType = 'normal';
@@ -185,9 +210,9 @@ function cleanSession(data) {
       id: pid, shape: name(pd.shape, 40), x: coord(pd.x), y: coord(pd.y),
       text: text(pd.text, 5000), deceased: !!pd.deceased, proband: !!pd.proband, consultand: !!pd.consultand,
       affected: !!pd.affected,
-      fillMode: oneOf(pd.fillMode, ['none', 'solid', 'half', 'quartered', 'shading'], undefined),
+      fillMode: oneOf(pd.fillMode, ['none', 'solid', 'half', 'thirds', 'quartered', 'shading'], undefined),
       fillColor: safeColor(pd.fillColor, undefined),
-      quarters: colours(pd.quarters, 4), halves: colours(pd.halves, 2),
+      quarters: colours(pd.quarters, 4), halves: colours(pd.halves, 2), thirds: colours(pd.thirds, 3),
       shadingPattern: oneOf(pd.shadingPattern, ['stripes', 'dots'], 'stripes'),
       shadingCoverage: oneOf(pd.shadingCoverage, ['full', 'half-left', 'half-right'], 'full'),
       centerText: text(pd.centerText, 8),
@@ -660,6 +685,7 @@ function setMiscarriageSex(s) {
   document.querySelectorAll('[data-ms]').forEach(b => b.classList.toggle('active', b.dataset.ms === s));
   let msEl = p.el.querySelector('.miscarriage-sex');
   if (msEl) msEl.textContent = s !== 'unknown' ? s : '';
+  updateTextWrapping();  // (the notes and the number go below the sex, or back up without it)
   scheduleSave();
 }
 
@@ -716,6 +742,7 @@ function initColorPickers() {
   };
   makePicker('solidColorPicker');
   makePicker('halfColorPicker');
+  makePicker('thirdColorPicker');
   makePicker('quarterColorPicker');
 }
 
@@ -941,6 +968,62 @@ function quarterDividerCoords(shape) {
   ];
 }
 
+// ── Thirds: 3 SVG path d-strings [top right, bottom, top left] and the 3 divider lines ──
+// As in the 2022 recommendations' figure, the dividers leave the middle of the symbol at 12, 4 and 8 o'clock
+// (for the triangle of a pregnancy loss, from its centre to its three corners).
+const THIRDS_CORNERS = {
+  male: [[4, 4], [48, 4], [48, 48], [4, 48]], 'adopted-male': [[13, 9], [39, 9], [39, 43], [13, 43]],
+  miscarriage: [[26, 8], [46, 44], [6, 44]], 'adopted-unknown': [[26, 7], [43, 26], [26, 45], [9, 26]],
+  unknown: [[26, 3], [49, 26], [26, 49], [3, 26]]
+};
+const thirdsCache = new Map();
+function thirdsGeom(shape) {
+  if (thirdsCache.has(shape)) return thirdsCache.get(shape);
+  const r2 = v => Math.round(v * 100) / 100;
+  const rad = a => a * Math.PI / 180;
+  const circle = shape === 'female' ? 22 : shape === 'adopted-female' ? 13 : 0;
+  let geom;
+  if (circle) {
+    const at = [-90, 30, 150].map(a => [r2(26 + circle * Math.cos(rad(a))), r2(26 + circle * Math.sin(rad(a)))]);
+    geom = {
+      paths: at.map((a, i) => { const b = at[(i + 1) % 3]; return `M 26 26 L ${a[0]} ${a[1]} A ${circle} ${circle} 0 0 1 ${b[0]} ${b[1]} Z`; }),
+      dividers: at.map(a => ({ x1: 26, y1: 26, x2: a[0], y2: a[1] }))
+    };
+  } else {
+    // the corners go clockwise from the top; each divider meets the outline at [x, y, the side it lies on]
+    const corners = Object.prototype.hasOwnProperty.call(THIRDS_CORNERS, shape) ? THIRDS_CORNERS[shape] : THIRDS_CORNERS.unknown;
+    const n = corners.length;
+    const c = shape === 'miscarriage' ? [26, 32] : [26, 26];
+    const hits = shape === 'miscarriage' ? corners.map((v, i) => [v[0], v[1], i]) : [-90, 30, 150].map(a => {
+      const dx = Math.cos(rad(a)), dy = Math.sin(rad(a));
+      let best = null;
+      corners.forEach((v, i) => {
+        const w = corners[(i + 1) % n], ex = w[0] - v[0], ey = w[1] - v[1];
+        const den = dx * ey - dy * ex;
+        if (Math.abs(den) < 1e-9) return;
+        const t = ((v[0] - c[0]) * ey - (v[1] - c[1]) * ex) / den;
+        const u = ((v[0] - c[0]) * dy - (v[1] - c[1]) * dx) / den;
+        if (t > 1e-6 && u > -1e-9 && u < 1 - 1e-9 && (!best || t < best.t)) best = { t, x: c[0] + t * dx, y: c[1] + t * dy, i };
+      });
+      return [r2(best.x), r2(best.y), best.i];
+    });
+    geom = {
+      paths: hits.map((h, k) => {
+        const next = hits[(k + 1) % 3];
+        let d = `M ${c[0]} ${c[1]} L ${h[0]} ${h[1]}`;
+        // the corners passed on the way round to the next divider
+        for (let i = (h[2] + 1) % n; i !== (next[2] + 1) % n; i = (i + 1) % n) d += ` L ${corners[i][0]} ${corners[i][1]}`;
+        return d + ` L ${next[0]} ${next[1]} Z`;
+      }),
+      dividers: hits.map(h => ({ x1: c[0], y1: c[1], x2: h[0], y2: h[1] }))
+    };
+  }
+  thirdsCache.set(shape, geom);
+  return geom;
+}
+function thirdPathDs(shape) { return thirdsGeom(shape).paths; }
+function thirdDividerCoords(shape) { return thirdsGeom(shape).dividers; }
+
 // ── Deceased line coords {x1,y1,x2,y2} ──
 
 function deceasedLineCoords(shape) {
@@ -1081,15 +1164,13 @@ function partnershipDropX(pship) {
 
 // ── Child link path d-string ──
 // siblingTops: array of non-noSnap sibling top positions (excl. this child)
-// twinInfo: null or { otherCenterX, otherTop }
+// twinInfo: null, or for twins, triplets and more { forkX, top } from twinFork(): where their lines meet
 
 function computeChildLinkD(midX, midY, childCenterX, childTop, childNoSnap, siblingTops, twinInfo, branchYOffset) {
   branchYOffset = branchYOffset || 0;
   if (twinInfo) {
-    const forkX = (childCenterX + twinInfo.otherCenterX) / 2;
-    const avgTop = (childTop + twinInfo.otherTop) / 2;
-    const branchY = Math.max(midY + 4, avgTop - SHAPE_HALF) - branchYOffset;
-    return `M ${midX} ${midY} L ${midX} ${branchY} L ${forkX} ${branchY} L ${childCenterX} ${childTop}`;
+    const branchY = Math.max(midY + 4, twinInfo.top - SHAPE_HALF) - branchYOffset;
+    return `M ${midX} ${midY} L ${midX} ${branchY} L ${twinInfo.forkX} ${branchY} L ${childCenterX} ${childTop}`;
   }
   let dropY;
   if (childNoSnap && siblingTops.length > 0) {
@@ -1111,9 +1192,122 @@ function computeTwinBarD(type, forkX, branchY, cc1x, cc2x, c1Top, c2Top) {
   const b2x = forkX + (cc2x - forkX) * f, b2y = branchY + (c2Top - branchY) * f;
   return `M ${b1x} ${b1y} L ${b2x} ${b2y}`;
 }
-// Twins whose zygosity is not known have a question mark where identical twins' bar would be
-function twinMarkPos(forkX, branchY, c1Top, c2Top) {
-  return { x: forkX, y: branchY + ((c1Top + c2Top) / 2 - branchY) * 0.5 };
+// Twins whose zygosity is not known have a question mark where identical twins' bar would be: between their
+// two lines, half-way down
+function twinMarkPos(forkX, branchY, cc1x, cc2x, c1Top, c2Top) {
+  return { x: forkX + ((cc1x + cc2x) / 2 - forkX) * 0.5, y: branchY + ((c1Top + c2Top) / 2 - branchY) * 0.5 };
+}
+
+// ── Twins, triplets and more ──
+// A twin link joins two children of a couple. Children joined to one another through twin links (triplets by two
+// or three of them) are one multiple birth, and their lines leave one point, above the middle of the group.
+function twinGroup(childId, pshipId) {
+  const group = [childId];
+  for (let i = 0; i < group.length; i++) {
+    twinLinks.forEach(t => {
+      if (t.partnershipId !== pshipId) return;
+      const o = t.child1Id === group[i] ? t.child2Id : t.child2Id === group[i] ? t.child1Id : null;
+      if (o && persons.has(o) && !group.includes(o)) group.push(o);
+    });
+  }
+  return group;
+}
+// Where a multiple birth's lines meet: { forkX, top (the highest of them), members: [{ id, x, top }] from left to right }, or null for
+// a child who is not one of twins (or more) under that couple. The point is above the middle child of triplets
+// (whose line goes straight down, as in the nomenclature), and half-way between the middle two of twins or
+// quadruplets.
+function twinFork(childId, pshipId) {
+  const group = twinGroup(childId, pshipId);
+  if (group.length < 2) return null;
+  const members = group.map(id => {
+    const p = persons.get(id);
+    return { id, x: getPersonCenter(p).x, top: parseFloat(p.el.style.top) };
+  }).sort((a, b) => a.x - b.x);
+  const n = members.length, mid = n >> 1;
+  return { forkX: n % 2 ? members[mid].x : (members[mid - 1].x + members[mid].x) / 2,
+           top: Math.min(...members.map(m => m.top)), members };
+}
+// Zygosity along links: identical with anything gives that other; not known with anything else, not known;
+// otherwise non-identical
+function twinTypeAlong(x, y) {
+  if (x === 'identical') return y;
+  if (y === 'identical') return x;
+  return x === 'unknown' || y === 'unknown' ? 'unknown' : 'nonidentical';
+}
+// The zygosity of two children of one multiple birth: their own link's or, with no link between them, what the
+// group's links give (identical when a chain of identical links joins them, else along the shortest chain)
+function twinPairType(aId, bId, pshipId) {
+  return twinPairTypeIn(twinLinks.filter(t => t.partnershipId === pshipId), aId, bId);
+}
+// How many of a multiple birth's links an order of its children (ids, left to right) cannot show: a link between
+// neighbours always shows; one between children further apart shows when the pairs between them, each drawn with
+// its own link or what the links give, add up to what it says
+function twinLinksHidden(order, links) {
+  links = links.filter(t => t.child1Id !== t.child2Id && order.includes(t.child1Id) && order.includes(t.child2Id));
+  const shown = [];
+  for (let i = 0; i + 1 < order.length; i++) shown.push(twinPairTypeIn(links, order[i], order[i + 1]));
+  return links.filter(t => {
+    let i = order.indexOf(t.child1Id), j = order.indexOf(t.child2Id);
+    if (i > j) [i, j] = [j, i];
+    let type = 'identical';
+    for (let k = i; k < j; k++) type = twinTypeAlong(type, shown[k]);
+    return type !== (t.type || 'identical');
+  }).length;
+}
+function twinPairTypeIn(links, aId, bId) {
+  const other = (t, u) => t.child1Id === u ? t.child2Id : t.child2Id === u ? t.child1Id : null;
+  const direct = links.find(t => other(t, aId) === bId);
+  if (direct) return direct.type;
+  const reach = (useLink) => {
+    const prev = new Map([[aId, null]]), queue = [aId];
+    while (queue.length) {
+      const u = queue.shift();
+      links.forEach(t => { const v = other(t, u); if (v && useLink(t) && !prev.has(v)) { prev.set(v, t); queue.push(v); } });
+    }
+    return prev;
+  };
+  if (reach(t => t.type === 'identical').has(bId)) return 'identical';
+  const prev = reach(() => true);
+  if (!prev.has(bId)) return 'nonidentical';
+  let type = 'identical';
+  for (let v = bId; v !== aId;) { const t = prev.get(v); type = twinTypeAlong(type, t.type); v = other(t, v); }
+  return type;
+}
+// One twin link's bar (identical) or question mark (zygosity not known): { bar: path d or '', mark: {x, y} or
+// null }, or null. Each pair of neighbours in the group gets one: a link between neighbours draws its own; a link
+// between children further apart draws, in turn, that of a pair of neighbours with no link between them (in a ring
+// or a star of links, say), from what the group's links give
+function twinLinkDecor(tl) {
+  const pship = partnerships.find(p => p.id === tl.partnershipId);
+  if (!pship || !persons.has(tl.child1Id) || !persons.has(tl.child2Id)) return null;
+  const fp = persons.get(pship.fromId), tp = persons.get(pship.toId);
+  if (!fp || !tp) return null;
+  const fork = twinFork(tl.child1Id, tl.partnershipId);
+  if (!fork) return null;
+  const at = id => fork.members.findIndex(m => m.id === id);
+  const i1 = at(tl.child1Id), i2 = at(tl.child2Id);
+  if (i1 < 0 || i2 < 0) return { bar: '', mark: null };
+  let i = Math.min(i1, i2), type = tl.type;
+  if (Math.abs(i1 - i2) !== 1) {
+    const inGroup = twinLinks.filter(t => t.partnershipId === tl.partnershipId && at(t.child1Id) >= 0 && at(t.child2Id) >= 0);
+    const apart = inGroup.filter(t => Math.abs(at(t.child1Id) - at(t.child2Id)) !== 1);
+    const unlinked = [];
+    for (let k = 0; k + 1 < fork.members.length; k++) {
+      if (!inGroup.some(t => Math.min(at(t.child1Id), at(t.child2Id)) === k && Math.abs(at(t.child1Id) - at(t.child2Id)) === 1)) unlinked.push(k);
+    }
+    const n = apart.indexOf(tl);
+    if (n < 0 || n >= unlinked.length) return { bar: '', mark: null };
+    i = unlinked[n];
+    type = twinPairType(fork.members[i].id, fork.members[i + 1].id, tl.partnershipId);
+  }
+  const a = fork.members[i], b = fork.members[i + 1];
+  const cl = childLinks.find(c => c.childId === tl.child1Id && c.partnershipId === tl.partnershipId);
+  const midY = (getPersonCenter(fp).y + getPersonCenter(tp).y) / 2;
+  const branchY = Math.max(midY + 4, fork.top - SHAPE_HALF) - ((cl && cl.branchYOffset) || 0);
+  return {
+    bar: computeTwinBarD(type, fork.forkX, branchY, a.x, b.x, a.top, b.top),
+    mark: type === 'unknown' ? twinMarkPos(fork.forkX, branchY, a.x, b.x, a.top, b.top) : null
+  };
 }
 
 // ── Proband arrow path d-string (in viewBox 0 0 18 18) ──
@@ -1123,17 +1317,21 @@ const PROBAND_ARROW_D = 'M2 16L16 2 M16 2L9 2 M16 2L16 9';
 // (the arrow's box starts 18 px left of the symbol and 54 px below its top)
 const PROBAND_P = { x: -24, y: 74, size: 11 };
 function hasArrow(p) { return !!(p.proband || p.consultand); }
+// a pregnancy loss with its sex written under the triangle: the notes go below that word
+function hasSexLabel(p) { return p.shape === 'miscarriage' && !!p.miscarriageSex && p.miscarriageSex !== 'unknown'; }
+const SEX_LABEL_H = 13;
 
 // ══════════════════════════════════════════
 // SHAPE SVG RENDERING (uses shared geometry)
 // ══════════════════════════════════════════
 
-function makeShapeSVG(shape, deceased, fillMode, fillColor, quarters, centerText, halves, shadingPattern, shadingCoverage) {
+function makeShapeSVG(shape, deceased, fillMode, fillColor, quarters, centerText, halves, shadingPattern, shadingCoverage, thirds) {
   let fills = '', deathLine = '', extra = '';
-  const hasFill = fillMode === 'solid' || fillMode === 'quartered' || fillMode === 'half' || fillMode === 'shading';
+  const hasFill = fillMode === 'solid' || fillMode === 'quartered' || fillMode === 'half' || fillMode === 'thirds' || fillMode === 'shading';
 
   if (fillMode === 'solid' && fillColor)          fills = makeSolidFill(shape, fillColor);
   else if (fillMode === 'half' && halves)          fills = makeHalfFill(shape, halves);
+  else if (fillMode === 'thirds' && thirds)        fills = makeThirdsFill(shape, thirds);
   else if (fillMode === 'quartered' && quarters)   fills = makeQuarteredFill(shape, quarters);
   else if (fillMode === 'shading')                 fills = makeShadingFill(shape, shadingPattern || 'stripes', shadingCoverage || 'full');
 
@@ -1173,6 +1371,16 @@ function makeHalfFill(shape, halves) {
     svg += `<path d="${d}" fill="${svgPaint(c)}" stroke="none"/>`;
   });
   svg += `<line x1="${dl.x1}" y1="${dl.y1}" x2="${dl.x2}" y2="${dl.y2}" stroke="${STROKE_COLOR}" stroke-width="1" opacity="0.3"/>`;
+  return svg;
+}
+
+function makeThirdsFill(shape, thirds) {
+  const g = thirdsGeom(shape);
+  let svg = '';
+  g.paths.forEach((d, i) => { svg += `<path d="${d}" fill="${svgPaint(thirds[i] || '#ffffff')}" stroke="none"/>`; });
+  g.dividers.forEach(dl => {
+    svg += `<line x1="${dl.x1}" y1="${dl.y1}" x2="${dl.x2}" y2="${dl.y2}" stroke="${STROKE_COLOR}" stroke-width="1" opacity="0.3"/>`;
+  });
   return svg;
 }
 
@@ -1238,7 +1446,7 @@ function makeShadingFill(shape, shadingPattern, shadingCoverage) {
 // ADD / REMOVE PERSON
 // ══════════════════════════
 
-function addPerson(customId, customX, customY, customShape, customText, customDeceased, customProband, customFillMode, customFillColor, customQuarters, customCenterText, customMiscarriageSex, customHalves, customShadingPattern, customShadingCoverage) {
+function addPerson(customId, customX, customY, customShape, customText, customDeceased, customProband, customFillMode, customFillColor, customQuarters, customCenterText, customMiscarriageSex, customHalves, customShadingPattern, customShadingCoverage, customThirds) {
   if (!customId) pushUndo();
   const id = customId || 'person-' + (++personIdCounter);
   if (!customId) { const n = parseInt(id.split('-')[1]) || 0; if (n > personIdCounter) personIdCounter = n; }
@@ -1258,6 +1466,7 @@ function addPerson(customId, customX, customY, customShape, customText, customDe
   const fillColor = customFillColor || FILL_COLORS[0];
   const quarters = customQuarters || [null, null, null, null];
   const halves = customHalves || [null, null];
+  const thirds = customThirds || [null, null, null];
   const centerText = customCenterText || '';
   const miscarriageSex = customMiscarriageSex || 'unknown';
   const shadingPattern = customShadingPattern || 'stripes';
@@ -1271,7 +1480,7 @@ function addPerson(customId, customX, customY, customShape, customText, customDe
 
   const shapeDiv = document.createElement('div');
   shapeDiv.className = 'person-shape';
-  shapeDiv.innerHTML = makeShapeSVG(shape, !!customDeceased, fillMode, fillColor, quarters, centerText, halves, shadingPattern, shadingCoverage);
+  shapeDiv.innerHTML = makeShapeSVG(shape, !!customDeceased, fillMode, fillColor, quarters, centerText, halves, shadingPattern, shadingCoverage, thirds);
   el.appendChild(shapeDiv);
 
   const numEl = document.createElement('div');
@@ -1337,6 +1546,7 @@ function addPerson(customId, customX, customY, customShape, customText, customDe
     fillMode, fillColor,
     quarters: [...quarters],
     halves: [...halves],
+    thirds: [...thirds],
     shadingPattern, shadingCoverage,
     centerText, miscarriageSex,
     noSnap: false,
@@ -1346,8 +1556,8 @@ function addPerson(customId, customX, customY, customShape, customText, customDe
   persons.set(id, personData);
 
   if (!loadingDrawing) {  // (when a drawing is opened, restoreSession() does these once, after its last person)
-    updateNumbering();
-    updateTextWrapping();
+    writeNumbers();
+    updateTextWrapping();  // (which places the numbers, once)
     expandCanvasIfNeeded();
   }
   scheduleSave();
@@ -1398,9 +1608,7 @@ function removePerson(id) {
   for (let i = childLinks.length - 1; i >= 0; i--) {
     if (childLinks[i].childId === id) { childLinks[i].els.forEach(el => el.remove()); childLinks.splice(i, 1); }
   }
-  for (let i = twinLinks.length - 1; i >= 0; i--) {
-    if (twinLinks[i].child1Id === id || twinLinks[i].child2Id === id) { twinLinks[i].els.forEach(el => el.remove()); twinLinks.splice(i, 1); }
-  }
+  unlinkTwin(id);
   multiSelected.delete(id);
   if (selectedPerson === id) { selectedPerson = null; hideProps(); }
   // Update multi-select panel count if needed
@@ -1518,13 +1726,15 @@ function showProps(p) {
   document.querySelectorAll('.fill-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === p.fillMode));
   document.getElementById('solidFillUI').style.display = p.fillMode === 'solid' ? 'block' : 'none';
   document.getElementById('halfFillUI').style.display = p.fillMode === 'half' ? 'block' : 'none';
+  document.getElementById('thirdsFillUI').style.display = p.fillMode === 'thirds' ? 'block' : 'none';
   document.getElementById('quarteredFillUI').style.display = p.fillMode === 'quartered' ? 'block' : 'none';
   document.getElementById('shadingFillUI').style.display = p.fillMode === 'shading' ? 'block' : 'none';
 
   // Update quarter grid visuals
   updateQuarterGridUI(p);
-  // Update half grid visuals
+  // Update half and third grid visuals
   updateHalfGridUI(p);
+  updateThirdGridUI(p);
   // Update shading UI visuals
   if (p.fillMode === 'shading') updateShadingUI(p);
 
@@ -1537,6 +1747,10 @@ function showProps(p) {
   }
   activeQuarter = -1;
   activeHalf = -1;
+  activeThird = -1;
+  document.querySelectorAll('#thirdGrid .third-cell').forEach(c => c.classList.remove('active-third'));
+  const tl = document.getElementById('thirdLabel');
+  if (tl) tl.textContent = 'Click a third, then pick a colour';
 }
 
 function hideProps() {
@@ -1641,10 +1855,24 @@ function deleteSelectedChildLink() {
   if (!selectedChildLinkId) return;
   const cl = childLinks.find(c => c.id === selectedChildLinkId);
   if (!cl) return;
-  const twinLink = twinLinks.find(t => t.child1Id === cl.childId || t.child2Id === cl.childId);
-  if (twinLink) {
-    if (confirm('This child is part of a twin link. Remove twin relationship?')) {
-      removeTwinLink(twinLink.id);
+  const ownTwinLinks = twinLinks.filter(t => (t.child1Id === cl.childId || t.child2Id === cl.childId) && t.partnershipId === cl.partnershipId);
+  if (ownTwinLinks.length) {
+    if (confirm('This child is linked as one of twins (or more). Remove those links?')) {
+      const kid = cl.childId, x = getPersonX(kid);
+      const others = twinGroup(kid, cl.partnershipId).filter(o => o !== kid).map(getPersonX);
+      if (others.some(o => o < x) && others.some(o => o > x)) {
+        // the child stood between the others, whose lines would now seem to come down with its own: lay the
+        // pedigree out again, as Older and Younger do, so that they stand together and it stands beside them
+        const spot = screenSpot(kid);
+        asOneStep(() => unlinkTwin(kid, cl.partnershipId), { tidy: true });
+        holdOnScreen(kid, spot);
+      } else {
+        pushUndo(); undoGroupActive = true;
+        unlinkTwin(kid, cl.partnershipId);
+        undoGroupActive = false;
+        updateNumbering();
+        scheduleSave();
+      }
     }
   } else {
     if (confirm('Remove this child connection?')) {
@@ -1721,6 +1949,7 @@ function changeShape(newShape) {
   p.shape = newShape;
   if (!p.miscarriageSex) p.miscarriageSex = 'unknown';
   refreshPersonShape(p);
+  updateTextWrapping();  // (a loss's sex, written under it, moves its notes and number)
   showProps(p);
   scheduleSave();
 }
@@ -1728,7 +1957,7 @@ function changeShape(newShape) {
 function refreshPersonShape(p) {
   const shapeDiv = p.el.querySelector('.person-shape');
   const delBtn = shapeDiv.querySelector('.delete-btn');
-  shapeDiv.innerHTML = makeShapeSVG(p.shape, p.deceased, p.fillMode, p.fillColor, p.quarters, p.centerText, p.halves, p.shadingPattern, p.shadingCoverage);
+  shapeDiv.innerHTML = makeShapeSVG(p.shape, p.deceased, p.fillMode, p.fillColor, p.quarters, p.centerText, p.halves, p.shadingPattern, p.shadingCoverage, p.thirds);
   if (delBtn) shapeDiv.appendChild(delBtn);
   if (hasArrow(p)) addProbandArrow(p.el, !!p.proband);
   // Manage miscarriage sex label
@@ -1754,10 +1983,12 @@ function setFillMode(mode) {
   document.querySelectorAll('.fill-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
   document.getElementById('solidFillUI').style.display = mode === 'solid' ? 'block' : 'none';
   document.getElementById('halfFillUI').style.display = mode === 'half' ? 'block' : 'none';
+  document.getElementById('thirdsFillUI').style.display = mode === 'thirds' ? 'block' : 'none';
   document.getElementById('quarteredFillUI').style.display = mode === 'quartered' ? 'block' : 'none';
   document.getElementById('shadingFillUI').style.display = mode === 'shading' ? 'block' : 'none';
   if (mode === 'quartered') updateQuarterGridUI(p);
   if (mode === 'half') updateHalfGridUI(p);
+  if (mode === 'thirds') updateThirdGridUI(p);
   if (mode === 'shading') updateShadingUI(p);
   refreshPersonShape(p);
   if (legendVisible) buildLegendBox();
@@ -1783,6 +2014,10 @@ function applyFillColor(color) {
   } else if (p.fillMode === 'half' && activeHalf >= 0) {
     p.halves[activeHalf] = color;
     updateHalfGridUI(p);
+  } else if (p.fillMode === 'thirds' && activeThird >= 0) {
+    if (!p.thirds) p.thirds = [null, null, null];
+    p.thirds[activeThird] = color;
+    updateThirdGridUI(p);
   } else if (p.fillMode === 'quartered' && activeQuarter >= 0) {
     p.quarters[activeQuarter] = color;
     updateQuarterGridUI(p);
@@ -1824,6 +2059,23 @@ function updateHalfGridUI(p) {
   cells.forEach(cell => {
     const hi = parseInt(cell.dataset.h);
     const c = p.halves ? p.halves[hi] : null;
+    cell.style.background = c || '#fff';
+    cell.style.color = c ? (isLight(c) ? '#333' : '#fff') : '#aaa';
+  });
+}
+
+// thirds: 0 top right, 1 bottom, 2 top left (clockwise from the top, as quarters are)
+const THIRD_NAMES = ['top right', 'bottom', 'top left'];
+function selectThird(ti) {
+  activeThird = ti;
+  document.querySelectorAll('#thirdGrid .third-cell').forEach(c => c.classList.remove('active-third'));
+  document.querySelector(`#thirdGrid .third-cell[data-t="${ti}"]`)?.classList.add('active-third');
+  document.getElementById('thirdLabel').textContent = `Selected: ${THIRD_NAMES[ti]}`;
+}
+
+function updateThirdGridUI(p) {
+  document.querySelectorAll('#thirdGrid .third-cell').forEach(cell => {
+    const c = p.thirds ? p.thirds[parseInt(cell.dataset.t)] : null;
     cell.style.background = c || '#fff';
     cell.style.color = c ? (isLight(c) ? '#333' : '#fff') : '#aaa';
   });
@@ -1871,10 +2123,12 @@ function showMultiSelectPanel() {
   document.querySelectorAll('[data-mmode]').forEach(b => b.classList.remove('active'));
   document.getElementById('multiSolidFillUI').style.display = 'none';
   document.getElementById('multiHalfFillUI').style.display = 'none';
+  document.getElementById('multiThirdsFillUI').style.display = 'none';
   document.getElementById('multiQuarteredFillUI').style.display = 'none';
   document.getElementById('multiShadingFillUI').style.display = 'none';
   multiActiveQuarter = -1;
   multiActiveHalf = -1;
+  multiActiveThird = -1;
 }
 
 function hideMultiSelectPanel() {
@@ -1893,10 +2147,12 @@ function multiSetFillMode(mode) {
   document.querySelectorAll('[data-mmode]').forEach(b => b.classList.toggle('active', b.dataset.mmode === mode));
   document.getElementById('multiSolidFillUI').style.display = mode === 'solid' ? 'block' : 'none';
   document.getElementById('multiHalfFillUI').style.display = mode === 'half' ? 'block' : 'none';
+  document.getElementById('multiThirdsFillUI').style.display = mode === 'thirds' ? 'block' : 'none';
   document.getElementById('multiQuarteredFillUI').style.display = mode === 'quartered' ? 'block' : 'none';
   document.getElementById('multiShadingFillUI').style.display = mode === 'shading' ? 'block' : 'none';
-  // Reset multi half/quarter grids
+  // Reset multi half/third/quarter grids
   document.querySelectorAll('#multiHalfGrid .half-cell').forEach(c => { c.style.background = '#fff'; c.classList.remove('active-half'); });
+  document.querySelectorAll('#multiThirdGrid .third-cell').forEach(c => { c.style.background = '#fff'; c.classList.remove('active-third'); });
   document.querySelectorAll('#multiQuarterGrid .quarter-cell').forEach(c => { c.style.background = '#fff'; c.classList.remove('active-quarter'); });
   if (mode === 'shading') {
     document.querySelectorAll('[data-mspattern]').forEach(b => b.classList.toggle('active', b.dataset.mspattern === 'stripes'));
@@ -1904,6 +2160,7 @@ function multiSetFillMode(mode) {
   }
   multiActiveQuarter = -1;
   multiActiveHalf = -1;
+  multiActiveThird = -1;
   if (legendVisible) buildLegendBox();
   scheduleSave();
 }
@@ -1919,6 +2176,9 @@ function multiApplyFillColor(color) {
       if (!color) p.fillMode = 'none';
     } else if (p.fillMode === 'half' && multiActiveHalf >= 0) {
       p.halves[multiActiveHalf] = color;
+    } else if (p.fillMode === 'thirds' && multiActiveThird >= 0) {
+      if (!p.thirds) p.thirds = [null, null, null];
+      p.thirds[multiActiveThird] = color;
     } else if (p.fillMode === 'quartered' && multiActiveQuarter >= 0) {
       p.quarters[multiActiveQuarter] = color;
     }
@@ -1949,6 +2209,13 @@ function multiSelectHalf(hi) {
   document.querySelector(`#multiHalfGrid .half-cell[data-mh="${hi}"]`)?.classList.add('active-half');
   const hNames = ['left', 'right'];
   document.getElementById('multiHalfLabel').textContent = `Selected: ${hNames[hi]}`;
+}
+
+function multiSelectThird(ti) {
+  multiActiveThird = ti;
+  document.querySelectorAll('#multiThirdGrid .third-cell').forEach(c => c.classList.remove('active-third'));
+  document.querySelector(`#multiThirdGrid .third-cell[data-mt="${ti}"]`)?.classList.add('active-third');
+  document.getElementById('multiThirdLabel').textContent = `Selected: ${THIRD_NAMES[ti]}`;
 }
 
 function multiSetShadingPattern(pattern) {
@@ -2039,6 +2306,7 @@ function initMultiColorPickers() {
   };
   makeMultiPicker('multiSolidColorPicker');
   makeMultiPicker('multiHalfColorPicker');
+  makeMultiPicker('multiThirdColorPicker');
   makeMultiPicker('multiQuarterColorPicker');
 }
 
@@ -3161,8 +3429,8 @@ function protectDraggedGroupFromOverlap(dragIds, origins) {
 
 function syncAfterDefaultPlacement() {
   updateAllConnections();
-  updateNumbering();
-  updateTextWrapping();
+  writeNumbers();
+  updateTextWrapping();  // (which places the numbers, once)
   expandCanvasIfNeeded();
 }
 
@@ -3886,9 +4154,14 @@ function removeChildLink(id) {
   pushUndo();
   const idx = childLinks.findIndex(c => c.id === id);
   if (idx === -1) return;
-  childLinks[idx].els.forEach(el => el.remove());
+  const cl = childLinks[idx];
+  cl.els.forEach(el => el.remove());
   childLinks.splice(idx, 1);
   multiSelectedChildLinks.delete(id);
+  // no longer this couple's child, so no longer one of their twins (or triplets); the others stay linked
+  if (twinLinks.some(t => t.partnershipId === cl.partnershipId && (t.child1Id === cl.childId || t.child2Id === cl.childId))) {
+    unlinkTwin(cl.childId, cl.partnershipId);
+  }
   scheduleSave();
 }
 
@@ -3905,16 +4178,8 @@ function updateChildLinkPos(cl) {
 
   const siblingIds = childLinks.filter(c => c.partnershipId === cl.partnershipId).map(c => c.childId);
 
-  // Check if twin
-  const twinLink = twinLinks.find(t => t.child1Id === cl.childId || t.child2Id === cl.childId);
-  let twinInfo = null;
-  if (twinLink) {
-    const otherChildId = twinLink.child1Id === cl.childId ? twinLink.child2Id : twinLink.child1Id;
-    const otherChild = persons.get(otherChildId);
-    if (otherChild) {
-      twinInfo = { otherCenterX: getPersonCenter(otherChild).x, otherTop: parseFloat(otherChild.el.style.top) };
-    }
-  }
+  // twins, triplets and more: the lines meet at one point
+  const twinInfo = twinFork(cl.childId, cl.partnershipId);
 
   // Gather non-noSnap sibling tops for noSnap branch calculation
   const siblingTops = siblingIds
@@ -4479,21 +4744,24 @@ function startTwinConnect(id) {
     document.getElementById('statusBar').textContent = 'Now click the second twin';
   } else if (twinSource !== id) {
     addTwinLink(twinSource, id, currentTwinType);
+    const said = document.getElementById('statusBar').textContent;  // (twins, or triplets, linked)
     document.querySelectorAll('.person.selected').forEach(el => el.classList.remove('selected'));
     twinSource = null;
     setTool('move');
+    document.getElementById('statusBar').textContent = said;
   }
 }
 
-function addTwinLink(child1Id, child2Id, type, customId) {
+function addTwinLink(child1Id, child2Id, type, customId, pshipId) {
+  if (child1Id === child2Id) return;  // (a child is not their own twin, whatever a file says)
   if (!customId) pushUndo();
-  // Find shared partnership
+  // the couple whose twins they are: the one named (a file's), if they are both its children, or else the first
+  // they share, preferring one whose lines to both are not dashed (birth parents rather than adoptive)
   const c1Links = childLinks.filter(cl => cl.childId === child1Id);
   const c2Links = childLinks.filter(cl => cl.childId === child2Id);
-  let sharedPship = null;
-  for (const l1 of c1Links) for (const l2 of c2Links) {
-    if (l1.partnershipId === l2.partnershipId) { sharedPship = l1.partnershipId; break; }
-  }
+  const shared = c1Links.filter(l1 => c2Links.some(l2 => l2.partnershipId === l1.partnershipId)).map(l1 => l1.partnershipId);
+  const born = shared.filter(id => !c1Links.find(l => l.partnershipId === id).dashed && !c2Links.find(l => l.partnershipId === id).dashed);
+  const sharedPship = shared.includes(pshipId) ? pshipId : born.length ? born[0] : shared.length ? shared[0] : null;
   if (!sharedPship) { document.getElementById('statusBar').textContent = 'Children must share a partnership'; return; }
   if (twinLinks.some(t => (t.child1Id === child1Id && t.child2Id === child2Id) || (t.child1Id === child2Id && t.child2Id === child1Id))) return;
 
@@ -4514,7 +4782,8 @@ function addTwinLink(child1Id, child2Id, type, customId) {
 
   svg.appendChild(twinPath);
   const tl = { id, child1Id, child2Id, type: type || 'identical', partnershipId: sharedPship, els: [twinPath] };
-  if (tl.type === 'unknown') {  // (zygosity not known: a question mark where the bar would be)
+  {  // a question mark where the bar would be, for zygosity not known (this link's, or, in a ring or star of links,
+     // that of the neighbours it is drawn for; hidden otherwise)
     const mark = document.createElementNS('http://www.w3.org/2000/svg', 'text');
     mark.setAttribute('class', 'twin-mark');
     mark.setAttribute('text-anchor', 'middle');
@@ -4523,17 +4792,57 @@ function addTwinLink(child1Id, child2Id, type, customId) {
     mark.setAttribute('font-weight', '700');
     mark.setAttribute('fill', STROKE_COLOR);
     mark.style.pointerEvents = 'none';
+    mark.style.display = 'none';
     mark.textContent = '?';
     svg.appendChild(mark);
     tl.els.push(mark);
   }
   twinLinks.push(tl);
-  updateTwinLinkPos(tl);
-  // Re-render the child links for both twins to show diagonal paths
-  childLinks.filter(cl => cl.childId === child1Id || cl.childId === child2Id).forEach(cl => updateChildLinkPos(cl));
+  // everyone in the multiple birth now has their line from the group's one point
+  const group = twinGroup(child1Id, sharedPship);
+  refreshTwinGroup(group);
   if (!loadingDrawing) updateNumbering();  // (restoreSession() numbers everyone once, at the end)
   scheduleSave();
-  document.getElementById('statusBar').textContent = tl.type === 'unknown' ? 'Twins linked (zygosity not known)!' : (type === 'identical' ? 'Identical' : 'Non-identical') + ' twins linked!';
+  let said = group.length > 2
+    ? 'Linked: ' + (group.length === 3 ? 'triplets' : group.length + ' children') + ', from one point'
+    : tl.type === 'unknown' ? 'Twins linked (zygosity not known)!' : (tl.type === 'identical' ? 'Identical' : 'Non-identical') + ' twins linked!';
+  // children linked across one between them: say so when the drawing cannot show what a link says
+  if (!loadingDrawing && group.length > 2) {
+    const order = group.slice().sort((u, v) => getPersonX(u) - getPersonX(v));
+    if (twinLinksHidden(order, twinLinks.filter(t => t.partnershipId === sharedPship))) said += '. In this order not every link\'s zygosity can be drawn: Tidy puts them in the order that shows the most';
+  }
+  document.getElementById('statusBar').textContent = said;
+}
+
+// Take a child out of their twins or triplets (under one couple, or all): their twin links go, and the others
+// they were linked to stay linked to one another, so triplets less one are still twins. The zygosity between
+// those two is what their two links gave: identical twins of each other are identical, a link of unknown
+// zygosity leaves it unknown, and otherwise they are non-identical.
+function unlinkTwin(id, pshipId) {
+  const others = new Map();
+  twinLinks.filter(t => (t.child1Id === id || t.child2Id === id) && (!pshipId || t.partnershipId === pshipId)).forEach(t => {
+    if (!others.has(t.partnershipId)) others.set(t.partnershipId, []);
+    others.get(t.partnershipId).push({ id: t.child1Id === id ? t.child2Id : t.child1Id, type: t.type });
+    t.els.forEach(el => el.remove());
+    twinLinks.splice(twinLinks.indexOf(t), 1);
+  });
+  others.forEach((list, pid) => {
+    const left = list.filter(o => persons.has(o.id)).sort((a, b) => getPersonX(a.id) - getPersonX(b.id));
+    for (let i = 0; i + 1 < left.length; i++) {
+      const a = left[i], b = left[i + 1];
+      if (twinGroup(a.id, pid).includes(b.id)) continue;
+      const type = a.type === 'identical' ? b.type : b.type === 'identical' ? a.type
+        : a.type === 'unknown' || b.type === 'unknown' ? 'unknown' : 'nonidentical';
+      addTwinLink(a.id, b.id, type, 'twin-' + (++lineIdCounter), pid);
+    }
+    refreshTwinGroup(left.map(o => o.id).concat(id));
+  });
+}
+
+// redraw the lines, bars and question marks of everyone in a multiple birth (ids: its children)
+function refreshTwinGroup(ids) {
+  childLinks.forEach(cl => { if (ids.includes(cl.childId)) updateChildLinkPos(cl); });
+  twinLinks.forEach(t => { if (ids.includes(t.child1Id) || ids.includes(t.child2Id)) updateTwinLinkPos(t); });
 }
 
 function removeTwinLink(id) {
@@ -4541,33 +4850,25 @@ function removeTwinLink(id) {
   const idx = twinLinks.findIndex(t => t.id === id);
   if (idx === -1) return;
   const tl = twinLinks[idx];
+  const group = twinGroup(tl.child1Id, tl.partnershipId);
   tl.els.forEach(el => el.remove());
   twinLinks.splice(idx, 1);
-  // Refresh the child links to revert to normal right-angle paths
-  childLinks.filter(cl => cl.childId === tl.child1Id || cl.childId === tl.child2Id).forEach(cl => updateChildLinkPos(cl));
+  // the rest of the group, if any, keep their own point; the others go back to ordinary lines
+  refreshTwinGroup(group);
   updateNumbering();
   scheduleSave();
 }
 
 function updateTwinLinkPos(tl) {
-  const c1 = persons.get(tl.child1Id), c2 = persons.get(tl.child2Id);
-  if (!c1 || !c2) return;
-  const pship = partnerships.find(p => p.id === tl.partnershipId);
-  if (!pship) return;
-  const fp = persons.get(pship.fromId), tp = persons.get(pship.toId);
-  if (!fp || !tp) return;
-  const fc = getPersonCenter(fp), tc = getPersonCenter(tp);
-  const midY = (fc.y + tc.y) / 2;
-  const cc1 = getPersonCenter(c1), cc2 = getPersonCenter(c2);
-  const c1Top = parseFloat(c1.el.style.top), c2Top = parseFloat(c2.el.style.top);
-  const forkX = (cc1.x + cc2.x) / 2;
-  const branchY = Math.max(midY + 4, (c1Top + c2Top) / 2 - SHAPE_HALF);
-
-  tl.els[0].setAttribute('d', computeTwinBarD(tl.type, forkX, branchY, cc1.x, cc2.x, c1Top, c2Top));
+  const decor = twinLinkDecor(tl);
+  if (!decor) return;
+  tl.els[0].setAttribute('d', decor.bar);
   if (tl.els[1]) {
-    const m = twinMarkPos(forkX, branchY, c1Top, c2Top);
-    tl.els[1].setAttribute('x', m.x);
-    tl.els[1].setAttribute('y', m.y);
+    tl.els[1].style.display = decor.mark ? '' : 'none';
+    if (decor.mark) {
+      tl.els[1].setAttribute('x', decor.mark.x);
+      tl.els[1].setAttribute('y', decor.mark.y);
+    }
   }
 }
 
@@ -5055,8 +5356,8 @@ function onPointerUp(e) {
       protectDraggedGroupFromOverlap(finalDragIds, finalOrigins);
       updateAllConnections();
     }
-    updateNumbering();
-    updateTextWrapping();
+    writeNumbers();
+    updateTextWrapping();  // (which places the numbers, once)
     expandCanvasIfNeeded();
     scheduleSave();
   }
@@ -5197,7 +5498,8 @@ function updateTextWrapping() {
   persons.forEach(p => {
     const textEl = p.el.querySelector('.person-text');
     if (!textEl) return;
-    if (!p.text) { textEl.style.maxWidth = ''; textEl.classList.remove('wrapped', 'text-left', 'proband-left'); return; }
+    if (!p.text) { textEl.style.maxWidth = ''; textEl.classList.remove('wrapped', 'text-left', 'proband-left', 'below-sex'); return; }
+    textEl.classList.toggle('below-sex', hasSexLabel(p));
 
     const px = parseFloat(p.el.style.left);
     const py = parseFloat(p.el.style.top);
@@ -5232,7 +5534,7 @@ function updateTextWrapping() {
       // the default text's left edge (px + 30): 30px in from the shape's right edge.
       const textRightEdge = px + SHAPE_SIZE - 30;
       const textLeft = textRightEdge - naturalWidth;
-      const ty = py + 56;
+      const ty = py + 56 + (hasSexLabel(p) ? SEX_LABEL_H : 0);
       const textBottom = ty + textEl.offsetHeight;
 
       let minAvail = Infinity;
@@ -5260,7 +5562,7 @@ function updateTextWrapping() {
     } else {
       // Text extends to the RIGHT (default), below the shape
       const tx = px + 30;
-      const ty = py + 56;
+      const ty = py + 56 + (hasSexLabel(p) ? SEX_LABEL_H : 0);
       const textRight = tx + naturalWidth;
       const textBottom = ty + textEl.offsetHeight;
 
@@ -5287,6 +5589,8 @@ function updateTextWrapping() {
       }
     }
   });
+  // the numbers go under the notes
+  placeNumbers();
 }
 
 // ══════════════════════
@@ -5294,6 +5598,153 @@ function updateTextWrapping() {
 // ══════════════════════
 
 function updateNumbering() {
+  writeNumbers();
+  placeNumbers();
+}
+
+// Where each pedigree number goes: below the symbol, as the last of what is written there (Bennett et al. 2022).
+// It goes under the notes, lined up with them (on the left when they run to the right of the symbol, on the right
+// when they run to the left of it, beside a partner's line), or centred under a symbol without notes; below the
+// sex of a pregnancy loss, and clear of the proband's arrow. Where someone else's notes, number, arrow or symbol is
+// in the way, or a line would cross it or run between it and the symbol (notes that reach the children's line,
+// say), it goes to the lower right of the symbol instead, which the nomenclature also allows, if that is clear,
+// and otherwise down below the notes in the way. p.numberAt keeps
+// where, from the symbol's top left, for the exports: { x, y, w, h, align: 'left' | 'right' | 'center' }.
+const NUMBER_LINE = 12, NUMBER_GAP = 2, NUMBER_TOP = 56;
+
+// The lines drawn on the canvas, as straight pieces [x1, y1, x2, y2]; a curve or an arc counts as its chord.
+function drawnLineSegments() {
+  const segs = [];
+  document.querySelectorAll('#lines-layer line, #lines-layer path').forEach(el => {
+    const stroke = el.getAttribute('stroke');
+    if (el.style.display === 'none' || stroke === 'transparent' || stroke === 'none' || stroke === '#ffffff') return;
+    if (el.tagName.toLowerCase() === 'line') {
+      segs.push([+el.getAttribute('x1') || 0, +el.getAttribute('y1') || 0, +el.getAttribute('x2') || 0, +el.getAttribute('y2') || 0]);
+      return;
+    }
+    const t = (el.getAttribute('d') || '').match(/[A-Za-z]|-?\d*\.?\d+(?:e[-+]?\d+)?/g) || [];
+    let i = 0, cmd = '', x = 0, y = 0, sx = 0, sy = 0;
+    const num = () => Number(t[i++]) || 0;
+    const to = (nx, ny) => { segs.push([x, y, nx, ny]); x = nx; y = ny; };
+    while (i < t.length) {
+      if (/^[A-Za-z]$/.test(t[i])) cmd = t[i++];
+      if (cmd === 'M') { x = sx = num(); y = sy = num(); cmd = 'L'; }
+      else if (cmd === 'L') to(num(), num());
+      else if (cmd === 'H') to(num(), y);
+      else if (cmd === 'V') to(x, num());
+      else if (cmd === 'Q') { i += 2; to(num(), num()); }
+      else if (cmd === 'C') { i += 4; to(num(), num()); }
+      else if (cmd === 'A') { i += 5; to(num(), num()); }
+      else if (cmd === 'Z' || cmd === 'z') { to(sx, sy); cmd = ''; }
+      else i++;  // (the Studio draws no relative commands)
+    }
+  });
+  return segs;
+}
+
+// Does the straight piece s cross the box (Liang-Barsky)?
+function segmentHitsBox(s, x1, y1, x2, y2) {
+  let t0 = 0, t1 = 1;
+  const dx = s[2] - s[0], dy = s[3] - s[1];
+  const p = [-dx, dx, -dy, dy], q = [s[0] - x1, x2 - s[0], s[1] - y1, y2 - s[1]];
+  for (let i = 0; i < 4; i++) {
+    if (Math.abs(p[i]) < 1e-9) { if (q[i] < 0) return false; }
+    else {
+      const r = q[i] / p[i];
+      if (p[i] < 0) { if (r > t1) return false; if (r > t0) t0 = r; }
+      else { if (r < t0) return false; if (r < t1) t1 = r; }
+    }
+  }
+  return t1 - t0 > 1e-6;
+}
+
+function placeNumbers() {
+  const people = [];
+  persons.forEach(p => {
+    const ne = p.el.querySelector('.person-number');
+    if (!ne || !ne.textContent) { p.numberAt = null; return; }
+    const t = p.el.querySelector('.person-text');
+    const notes = t && p.text && t.offsetHeight ? { x: t.offsetLeft, y: t.offsetTop, w: t.offsetWidth, h: t.offsetHeight, left: t.classList.contains('text-left') } : null;
+    people.push({ p, ne, x: parseFloat(p.el.style.left), y: parseFloat(p.el.style.top), notes, w: ne.offsetWidth, h: ne.offsetHeight || NUMBER_LINE });
+  });
+  // the lines drawn, by 128-px column, so that a number is checked only against the lines near it
+  const segCols = new Map();
+  (people.length ? drawnLineSegments() : []).forEach(sg => {
+    for (let c = Math.floor(Math.min(sg[0], sg[2]) / 128); c <= Math.floor(Math.max(sg[0], sg[2]) / 128); c++) {
+      if (!segCols.has(c)) segCols.set(c, []);
+      segCols.get(c).push(sg);
+    }
+  });
+  const symbols = [];
+  persons.forEach(p => {
+    const x = parseFloat(p.el.style.left), y = parseFloat(p.el.style.top);
+    symbols.push({ id: p.id, x1: x, y1: y, x2: x + SHAPE_SIZE, y2: y + SHAPE_SIZE });
+  });
+  const inTheWay = [];
+  persons.forEach(p => {
+    // the proband's or consultand's arrow, and the P, at the lower left of the symbol
+    if (hasArrow(p)) {
+      const x = parseFloat(p.el.style.left), y = parseFloat(p.el.style.top);
+      inTheWay.push({ id: p.id + ' arrow', x1: x - 30, y1: y + 52, x2: x, y2: y + 78 });
+    }
+    const t = p.el.querySelector('.person-text');
+    if (!t || !p.text || !t.offsetHeight) return;
+    const x = parseFloat(p.el.style.left) + t.offsetLeft, y = parseFloat(p.el.style.top) + t.offsetTop;
+    inTheWay.push({ id: p.id, x1: x, y1: y, x2: x + t.offsetWidth, y2: y + t.offsetHeight });
+  });
+  people.forEach(o => {
+    const { p, notes, w, h } = o;
+    let nx, ny, align;
+    if (notes) {
+      ny = notes.y + notes.h + NUMBER_GAP;
+      if (notes.left) { nx = notes.x + notes.w - w; align = 'right'; } else { nx = notes.x; align = 'left'; }
+    } else {
+      nx = SHAPE_HALF - w / 2; ny = NUMBER_TOP; align = 'center';
+      if (hasSexLabel(p)) ny += SEX_LABEL_H;
+      if (hasArrow(p) && nx < 2) ny = Math.max(ny, 78);
+    }
+    const lineThrough = (X1, Y1, X2, Y2) => {
+      for (let c = Math.floor(X1 / 128); c <= Math.floor(X2 / 128); c++) {
+        if ((segCols.get(c) || []).some(sg => segmentHitsBox(sg, X1, Y1, X2, Y2))) return true;
+      }
+      return false;
+    };
+    const othersAt = (X1, Y1, X2, Y2) => inTheWay.find(b => b.id !== p.id && b.x1 < X2 && b.x2 > X1 && b.y1 < Y2 && b.y2 > Y1);
+    const symbolAt = (X1, Y1, X2, Y2) => symbols.some(b => b.id !== p.id && b.x1 < X2 && b.x2 > X1 && b.y1 < Y2 && b.y2 > Y1);
+    // in the way: someone else's notes, number, arrow or symbol, or a line across the number or between it and the
+    // symbol (notes long enough to reach the children's line, say)
+    const blocked = (x, y) => othersAt(o.x + x - 2, o.y + y, o.x + x + w + 2, o.y + y + h) || symbolAt(o.x + x, o.y + y, o.x + x + w, o.y + y + h) ||
+      lineThrough(o.x + x - 1, o.y + Math.min(y, notes ? notes.y : y), o.x + x + w + 1, o.y + y + h);
+    if (blocked(nx, ny)) {
+      const rx = SHAPE_SIZE + NUMBER_GAP + 1, ry = SHAPE_SIZE - h;
+      const X1 = o.x + rx, Y1 = o.y + ry, X2 = X1 + w, Y2 = Y1 + h;
+      if (!othersAt(X1 - 2, Y1, X2 + 2, Y2) && !symbolAt(X1 - 2, Y1 - 2, X2 + 2, Y2 + 2) && !lineThrough(X1 - 2, Y1 - 1, X2 + 2, Y2 + 1)) {
+        nx = rx; ny = ry; align = 'left';
+      } else {
+        for (let tries = 0; tries < 20; tries++) {
+          const hit = othersAt(o.x + nx - 2, o.y + ny, o.x + nx + w + 2, o.y + ny + h);
+          if (!hit) break;
+          ny = hit.y2 - o.y + NUMBER_GAP;
+        }
+      }
+    }
+    o.ne.style.left = nx + 'px';
+    o.ne.style.top = ny + 'px';
+    p.numberAt = { x: nx, y: ny, w, h, align };
+    inTheWay.push({ id: p.id + ' number', x1: o.x + nx, y1: o.y + ny, x2: o.x + nx + w, y2: o.y + ny + h });
+  });
+}
+
+// Pedigree numbers (or letters, or labels of your own) for people only. The nomenclature numbers individuals
+// (Bennett et al. 2022), and the bars for no children and infertility are not people, so they have none and do not
+// count in their row. (studio2ped, studio2ga4gh and the workbench's Risk tab number a drawing the same way.)
+function writeNumbers() {
+  const numbered = [];
+  persons.forEach(p => {
+    if (!isLineShape(p.shape)) { numbered.push(p); return; }
+    const ne = p.el.querySelector('.person-number');
+    if (ne) { ne.textContent = ''; ne.contentEditable = 'false'; ne.classList.remove('editable'); }
+  });
   if (numberingMode === 'off') {
     persons.forEach(p => {
       const ne = p.el.querySelector('.person-number');
@@ -5302,7 +5753,7 @@ function updateNumbering() {
     return;
   }
   if (numberingMode === 'freetext') {
-    persons.forEach(p => {
+    numbered.forEach(p => {
       const ne = p.el.querySelector('.person-number');
       if (!ne) return;
       ne.textContent = p.customLabel;
@@ -5342,8 +5793,10 @@ function updateNumbering() {
             const pd = persons.get(pid);
             if (pd) { pd.customLabel = ne.textContent.trim(); }
           }
+          placeNumbers();
           scheduleSave();
         });
+        ne.addEventListener('input', () => placeNumbers());  // (a label kept in its place as it is typed)
         ne.addEventListener('keydown', (e) => {
           if (e.key === 'Enter') { e.preventDefault(); ne.blur(); }
         });
@@ -5362,9 +5815,8 @@ function updateNumbering() {
     const ne = p.el.querySelector('.person-number');
     if (ne) { ne.contentEditable = 'false'; ne.classList.remove('editable'); }
   });
-  if (persons.size === 0) return;
-  const list = [];
-  persons.forEach(p => { list.push({ id: p.id, x: parseFloat(p.el.style.left), y: parseFloat(p.el.style.top) }); });
+  if (!numbered.length) return;
+  const list = numbered.map(p => ({ id: p.id, x: parseFloat(p.el.style.left), y: parseFloat(p.el.style.top) }));
   list.sort((a, b) => a.y - b.y);
 
   const generations = [];
@@ -5392,20 +5844,6 @@ function updateNumbering() {
           numEl.textContent = `${genLabel}-${posLabel}`;
         }
         globalIdx++;
-        const hasChildLine = childLinks.some(cl => cl.childId === p.id);
-        // Check if this person is part of a twin link
-        const twinLink = twinLinks.find(t => t.child1Id === p.id || t.child2Id === p.id);
-        if (twinLink) {
-          // Determine if this is the left or right twin
-          const otherId = twinLink.child1Id === p.id ? twinLink.child2Id : twinLink.child1Id;
-          const other = persons.get(otherId);
-          const isRightTwin = other && parseFloat(p.el.style.left) > parseFloat(other.el.style.left);
-          numEl.classList.remove('shifted-left', 'shifted-right');
-          numEl.classList.add(isRightTwin ? 'shifted-right' : 'shifted-left');
-        } else {
-          numEl.classList.remove('shifted-left', 'shifted-right');
-          if (hasChildLine) numEl.classList.add('shifted-left');
-        }
       }
     });
   });
@@ -5528,6 +5966,7 @@ function buildLegendBox() {
   persons.forEach(p => {
     if (p.fillMode === 'solid' && p.fillColor && !seen.has(p.fillColor)) { seen.add(p.fillColor); colorsInUse.push(p.fillColor); }
     if (p.fillMode === 'half') p.halves.forEach(q => { if (q && !seen.has(q)) { seen.add(q); colorsInUse.push(q); } });
+    if (p.fillMode === 'thirds') (p.thirds || []).forEach(q => { if (q && !seen.has(q)) { seen.add(q); colorsInUse.push(q); } });
     if (p.fillMode === 'quartered') p.quarters.forEach(q => { if (q && !seen.has(q)) { seen.add(q); colorsInUse.push(q); } });
     if (p.fillMode === 'shading') {
       const sKey = `shading:${p.shadingPattern || 'stripes'}:${p.shadingCoverage || 'full'}`;
@@ -5721,8 +6160,8 @@ document.addEventListener('keydown', (e) => {
         p.y = newY;
       });
       updateAllConnections();
-      updateNumbering();
-      updateTextWrapping();
+      writeNumbers();
+      updateTextWrapping();  // (which places the numbers, once)
       expandCanvasIfNeeded();
     }
     if (hasLabel) {
@@ -5784,11 +6223,11 @@ function clearAll() {
 
 function buildSessionData() {
   normalizeRelatedPartnershipTypes();
-  // Sync freetext labels from DOM before saving
+  // Sync freetext labels from DOM before saving (a bar shows none, so a label it has from an older file is kept as it was)
   if (numberingMode === 'freetext') {
     persons.forEach(p => {
       const ne = p.el.querySelector('.person-number');
-      if (ne && ne.textContent !== undefined) p.customLabel = ne.textContent.trim();
+      if (ne && ne.textContent !== undefined && !isLineShape(p.shape)) p.customLabel = ne.textContent.trim();
     });
   }
   const personArr = [];
@@ -5799,6 +6238,7 @@ function buildSessionData() {
       text: p.text, deceased: p.deceased, proband: p.proband, consultand: !!p.consultand,
       fillMode: p.fillMode, fillColor: p.fillColor, quarters: [...p.quarters],
       halves: [...(p.halves || [null, null])],
+      thirds: [...(p.thirds || [null, null, null])],
       shadingPattern: p.shadingPattern || 'stripes',
       shadingCoverage: p.shadingCoverage || 'full',
       centerText: p.centerText || '', miscarriageSex: p.miscarriageSex || 'unknown',
@@ -5869,8 +6309,9 @@ function restoreSession(data) {
       let fc = pd.fillColor || FILL_COLORS[0];
       let q = pd.quarters || [null, null, null, null];
       let h = pd.halves || [null, null];
+      const th = pd.thirds || [null, null, null];
       if (pd.affected && fm === 'none') { fm = 'solid'; fc = '#1a2332'; }
-      addPerson(pd.id, pd.x, pd.y, pd.shape, pd.text, pd.deceased, pd.proband, fm, fc, q, pd.centerText || '', pd.miscarriageSex || 'unknown', h, pd.shadingPattern || 'stripes', pd.shadingCoverage || 'full');
+      addPerson(pd.id, pd.x, pd.y, pd.shape, pd.text, pd.deceased, pd.proband, fm, fc, q, pd.centerText || '', pd.miscarriageSex || 'unknown', h, pd.shadingPattern || 'stripes', pd.shadingCoverage || 'full', th);
       if (pd.noSnap) { const pp = persons.get(pd.id); if (pp) pp.noSnap = true; }
       if (pd.siblingFixed) { const pp = persons.get(pd.id); if (pp) pp.siblingFixed = true; }
       if (pd.customLabel) { const pp = persons.get(pd.id); if (pp) pp.customLabel = pd.customLabel; }
@@ -5898,7 +6339,7 @@ function restoreSession(data) {
       const n = parseInt(cd.id.split('-')[1]) || 0; if (n < 1e9 && n > lineIdCounter) lineIdCounter = n;
     });
     (data.twinLinks || []).forEach(td => {
-      addTwinLink(td.child1Id, td.child2Id, td.type, td.id);
+      addTwinLink(td.child1Id, td.child2Id, td.type, td.id, td.partnershipId);
       const n = parseInt(td.id.split('-')[1]) || 0; if (n < 1e9 && n > lineIdCounter) lineIdCounter = n;
     });
   } finally {
@@ -5926,8 +6367,8 @@ function restoreSession(data) {
   }
   document.getElementById('zoomLabel').textContent = Math.round(zoomLevel * 100) + '%';
   applyTransform();
-  updateNumbering();
-  updateTextWrapping();
+  writeNumbers();
+  updateTextWrapping();  // (which places the numbers, once)
   expandCanvasIfNeeded();
 
   // Restore legend if it was visible
@@ -5960,9 +6401,15 @@ function importJSON(event) {
     try {
       // (a file that is not a drawing is turned away here, before Undo is touched)
       const data = cleanSession(JSON.parse(e.target.result));
+      const before = buildSessionData();
       pushUndo();
       isRestoring = true;
-      try { restoreSession(data); } finally { isRestoring = false; }
+      try { restoreSession(data); }
+      catch (err) {
+        // a file that cannot be drawn leaves the drawing as it was, rather than half replaced
+        try { restoreSession(before); undoStack.pop(); updateUndoRedoUI(); } catch (e2) { /* (it is still on the Undo list) */ }
+        throw err;
+      } finally { isRestoring = false; }
       document.getElementById('statusBar').textContent = 'Session loaded!';
       document.getElementById('splashOverlay').classList.add('hidden');
     } catch (err) { alert('Could not read session file: ' + err.message); }
@@ -5991,6 +6438,14 @@ function legendExportLayout(entries) {
   return { lw, lh, rows, line: LINE };
 }
 
+// the width of the widest line of someone's notes as the exports write it
+let exportMeasureCtx = null;
+function exportNotesWidth(text) {
+  if (!exportMeasureCtx) exportMeasureCtx = document.createElement('canvas').getContext('2d');
+  exportMeasureCtx.font = "11px -apple-system, 'Segoe UI', system-ui, Helvetica, sans-serif";
+  return Math.max(0, ...String(text).split('\n').map(l => exportMeasureCtx.measureText(l).width));
+}
+
 // ── Shared export bounds computation ──
 function computeExportBounds() {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -6006,6 +6461,18 @@ function computeExportBounds() {
     });
     minX = Math.min(minX, x - (isLeftP ? 140 : 20)); minY = Math.min(minY, y - 20);
     maxX = Math.max(maxX, x + SHAPE_SIZE + (isLeftP ? 20 : 140)); maxY = Math.max(maxY, y + SHAPE_SIZE + 80);
+    // long notes, and the number under them (the exports draw each line of the notes 15 px below the last, in
+    // full, from 30 px into the symbol, to the left of it for a left-hand partner)
+    if (p.text) {
+      maxY = Math.max(maxY, y + (isLeftP && hasArrow(p) ? 74 : hasSexLabel(p) ? 56 + SEX_LABEL_H : 56) + p.text.split('\n').length * 15 + 4);
+      const w = exportNotesWidth(p.text);
+      if (isLeftP) minX = Math.min(minX, x + SHAPE_SIZE - 30 - w - 4); else maxX = Math.max(maxX, x + 30 + w + 4);
+    }
+    const na = p.numberAt;
+    if (na) {
+      minX = Math.min(minX, x + na.x - 4); maxX = Math.max(maxX, x + na.x + na.w + 4);
+      maxY = Math.max(maxY, y + na.y + na.h + 4);
+    }
   });
   labels.forEach(l => {
     const x = parseFloat(l.el.style.left), y = parseFloat(l.el.style.top);
@@ -6027,6 +6494,7 @@ function computeExportBounds() {
     persons.forEach(p => {
       if (p.fillMode === 'solid' && p.fillColor && !seen.has(p.fillColor)) { seen.add(p.fillColor); legendColors.push({ color: p.fillColor, label: legendLabels[p.fillColor] || '' }); }
       if (p.fillMode === 'half') p.halves.forEach(q => { if (q && !seen.has(q)) { seen.add(q); legendColors.push({ color: q, label: legendLabels[q] || '' }); } });
+      if (p.fillMode === 'thirds') (p.thirds || []).forEach(q => { if (q && !seen.has(q)) { seen.add(q); legendColors.push({ color: q, label: legendLabels[q] || '' }); } });
       if (p.fillMode === 'quartered') p.quarters.forEach(q => { if (q && !seen.has(q)) { seen.add(q); legendColors.push({ color: q, label: legendLabels[q] || '' }); } });
       if (p.fillMode === 'shading') {
         const sKey = `shading:${p.shadingPattern || 'stripes'}:${p.shadingCoverage || 'full'}`;
@@ -6102,13 +6570,7 @@ function saveAsImage() {
     const childCenter = getPersonCenter(child);
     const childTop = parseFloat(child.el.style.top);
     const siblingIds = childLinks.filter(c2 => c2.partnershipId === cl.partnershipId).map(c2 => c2.childId);
-    const twinLink = twinLinks.find(t => t.child1Id === cl.childId || t.child2Id === cl.childId);
-    let twinInfo = null;
-    if (twinLink) {
-      const otherId = twinLink.child1Id === cl.childId ? twinLink.child2Id : twinLink.child1Id;
-      const otherChild = persons.get(otherId);
-      if (otherChild) twinInfo = { otherCenterX: getPersonCenter(otherChild).x, otherTop: parseFloat(otherChild.el.style.top) };
-    }
+    const twinInfo = twinFork(cl.childId, cl.partnershipId);
     const siblingTops = siblingIds
       .filter(id => { const p2 = persons.get(id); return p2 && !p2.noSnap && id !== cl.childId; })
       .map(id => parseFloat(persons.get(id).el.style.top));
@@ -6173,25 +6635,13 @@ function saveAsImage() {
   // ── Draw twin bars (uses shared computeTwinBarD) ──
   ctx.strokeStyle = STROKE_COLOR; ctx.lineWidth = STROKE_W;
   twinLinks.forEach(tl => {
-    const c1 = persons.get(tl.child1Id), c2 = persons.get(tl.child2Id);
-    if (!c1 || !c2) return;
-    const pship = partnerships.find(p => p.id === tl.partnershipId);
-    if (!pship) return;
-    const fp = persons.get(pship.fromId), tp = persons.get(pship.toId);
-    if (!fp || !tp) return;
-    const fc = getPersonCenter(fp), tc = getPersonCenter(tp);
-    const midY = (fc.y + tc.y) / 2;
-    const cc1 = getPersonCenter(c1), cc2 = getPersonCenter(c2);
-    const c1Top = parseFloat(c1.el.style.top), c2Top = parseFloat(c2.el.style.top);
-    const forkX = (cc1.x + cc2.x) / 2;
-    const branchY = Math.max(midY + 4, (c1Top + c2Top) / 2 - SHAPE_HALF);
-    const d = computeTwinBarD(tl.type, forkX, branchY, cc1.x, cc2.x, c1Top, c2Top);
-    if (d) strokePathD(d);
-    if (tl.type === 'unknown') {
-      const m = twinMarkPos(forkX, branchY, c1Top, c2Top);
+    const decor = twinLinkDecor(tl);
+    if (!decor) return;
+    if (decor.bar) strokePathD(decor.bar);
+    if (decor.mark) {
       ctx.save(); ctx.fillStyle = STROKE_COLOR; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.font = "700 14px -apple-system, 'Segoe UI', system-ui, Helvetica, sans-serif";
-      ctx.fillText('?', m.x, m.y);
+      ctx.fillText('?', decor.mark.x, decor.mark.y);
       ctx.restore();
     }
   });
@@ -6213,6 +6663,11 @@ function saveAsImage() {
       hDs.forEach((hd, i) => {
         ctx.fillStyle = p.halves[i] || '#ffffff';
         ctx.fill(drawShapeAtPos(hd, x, y));
+      });
+    } else if (p.fillMode === 'thirds') {
+      thirdPathDs(p.shape).forEach((td, i) => {
+        ctx.fillStyle = (p.thirds && p.thirds[i]) || '#ffffff';
+        ctx.fill(drawShapeAtPos(td, x, y));
       });
     } else if (p.fillMode === 'quartered') {
       const qDs = quarterPathDs(p.shape);
@@ -6279,10 +6734,10 @@ function saveAsImage() {
       ctx.restore();
     }
 
-    // Quarter dividers
-    if (p.fillMode === 'quartered') {
+    // Third and quarter dividers
+    if (p.fillMode === 'quartered' || p.fillMode === 'thirds') {
       ctx.save(); ctx.strokeStyle = 'rgba(26,35,50,0.3)'; ctx.lineWidth = 1;
-      quarterDividerCoords(p.shape).forEach(dl => {
+      (p.fillMode === 'thirds' ? thirdDividerCoords(p.shape) : quarterDividerCoords(p.shape)).forEach(dl => {
         ctx.beginPath(); ctx.moveTo(x + dl.x1, y + dl.y1); ctx.lineTo(x + dl.x2, y + dl.y2); ctx.stroke();
       });
       ctx.restore();
@@ -6323,25 +6778,13 @@ function saveAsImage() {
       ctx.restore();
     }
 
-    // Number label
+    // Number label, below the symbol where placeNumbers() put it
     const numEl = p.el.querySelector('.person-number');
-    if (numEl && numEl.textContent) {
-      ctx.fillStyle = '#6b7a8d'; ctx.font = 'bold 9px ' + FONT;
-      const hasChildLine = childLinks.some(cl => cl.childId === p.id);
-      const twinLink = twinLinks.find(t => t.child1Id === p.id || t.child2Id === p.id);
-      if (twinLink) {
-        const otherId = twinLink.child1Id === p.id ? twinLink.child2Id : twinLink.child1Id;
-        const other = persons.get(otherId);
-        const isRightTwin = other && x > parseFloat(other.el.style.left);
-        ctx.textAlign = isRightTwin ? 'left' : 'right'; ctx.textBaseline = 'bottom';
-        ctx.fillText(numEl.textContent, isRightTwin ? x + SHAPE_SIZE + 2 : x - 2, y - 4);
-      } else if (hasChildLine) {
-        ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
-        ctx.fillText(numEl.textContent, x - 2, y - 4);
-      } else {
-        ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-        ctx.fillText(numEl.textContent, cx, y - 4);
-      }
+    if (numEl && numEl.textContent && p.numberAt) {
+      const na = p.numberAt;
+      ctx.fillStyle = '#6b7a8d'; ctx.font = 'bold 9px ' + FONT; ctx.textBaseline = 'top';
+      ctx.textAlign = na.align;
+      ctx.fillText(numEl.textContent, x + na.x + (na.align === 'center' ? na.w / 2 : na.align === 'right' ? na.w : 0), y + na.y + 1.5);
     }
 
     // Text annotation
@@ -6355,14 +6798,15 @@ function saveAsImage() {
         }
       });
       ctx.fillStyle = STROKE_COLOR; ctx.font = '11px ' + FONT; ctx.textBaseline = 'top';
+      const top = y + (hasSexLabel(p) ? 56 + SEX_LABEL_H : 56);
       if (isLeftPartner) {
         // Mirrors the default x + 30: ends 30px in from the shape's right edge (matches .text-left).
         ctx.textAlign = 'right';
-        const textY = hasArrow(p) ? y + 74 : y + 56;
+        const textY = hasArrow(p) ? y + 74 : top;
         p.text.split('\n').forEach((line, i) => { ctx.fillText(line, x + SHAPE_SIZE - 30, textY + i * 15); });
       } else {
         ctx.textAlign = 'left';
-        p.text.split('\n').forEach((line, i) => { ctx.fillText(line, x + 30, y + 56 + i * 15); });
+        p.text.split('\n').forEach((line, i) => { ctx.fillText(line, x + 30, top + i * 15); });
       }
     }
 
@@ -6370,7 +6814,7 @@ function saveAsImage() {
     if (p.shape === 'miscarriage' && p.miscarriageSex && p.miscarriageSex !== 'unknown') {
       ctx.fillStyle = '#6b7a8d'; ctx.font = 'bold 9px -apple-system, sans-serif';
       ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-      ctx.fillText(p.miscarriageSex, cx, y + 58);
+      ctx.fillText(p.miscarriageSex.toUpperCase(), cx, y + 58);
     }
   });
 
@@ -6530,13 +6974,7 @@ function buildPedigreeSVG() {
     const childCenter = getPersonCenter(child);
     const childTop = parseFloat(child.el.style.top);
     const siblingIds = childLinks.filter(c2 => c2.partnershipId === cl.partnershipId).map(c2 => c2.childId);
-    const twinLink = twinLinks.find(t => t.child1Id === cl.childId || t.child2Id === cl.childId);
-    let twinInfo = null;
-    if (twinLink) {
-      const otherId = twinLink.child1Id === cl.childId ? twinLink.child2Id : twinLink.child1Id;
-      const otherChild = persons.get(otherId);
-      if (otherChild) twinInfo = { otherCenterX: getPersonCenter(otherChild).x, otherTop: parseFloat(otherChild.el.style.top) };
-    }
+    const twinInfo = twinFork(cl.childId, cl.partnershipId);
     const siblingTops = siblingIds
       .filter(id => { const p2 = persons.get(id); return p2 && !p2.noSnap && id !== cl.childId; })
       .map(id => parseFloat(persons.get(id).el.style.top));
@@ -6592,24 +7030,10 @@ function buildPedigreeSVG() {
 
   // ── Twin bars ──
   twinLinks.forEach(tl => {
-    const c1 = persons.get(tl.child1Id), c2 = persons.get(tl.child2Id);
-    if (!c1 || !c2) return;
-    const pship = partnerships.find(p2 => p2.id === tl.partnershipId);
-    if (!pship) return;
-    const fp = persons.get(pship.fromId), tp = persons.get(pship.toId);
-    if (!fp || !tp) return;
-    const fc = getPersonCenter(fp), tc = getPersonCenter(tp);
-    const midY = (fc.y + tc.y) / 2;
-    const cc1 = getPersonCenter(c1), cc2 = getPersonCenter(c2);
-    const c1Top = parseFloat(c1.el.style.top), c2Top = parseFloat(c2.el.style.top);
-    const forkX = (cc1.x + cc2.x) / 2;
-    const branchY = Math.max(midY + 4, (c1Top + c2Top) / 2 - SHAPE_HALF);
-    const d = computeTwinBarD(tl.type, forkX, branchY, cc1.x, cc2.x, c1Top, c2Top);
-    if (d) els.push(`<path d="${d}" stroke="${STROKE_COLOR}" stroke-width="${STROKE_W}" fill="none"/>`);
-    if (tl.type === 'unknown') {
-      const m = twinMarkPos(forkX, branchY, c1Top, c2Top);
-      els.push(`<text x="${m.x}" y="${m.y}" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="700" fill="${STROKE_COLOR}" font-family="${FONT}">?</text>`);
-    }
+    const decor = twinLinkDecor(tl);
+    if (!decor) return;
+    if (decor.bar) els.push(`<path d="${decor.bar}" stroke="${STROKE_COLOR}" stroke-width="${STROKE_W}" fill="none"/>`);
+    if (decor.mark) els.push(`<text x="${decor.mark.x}" y="${decor.mark.y}" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="700" fill="${STROKE_COLOR}" font-family="${FONT}">?</text>`);
   });
 
   // ── Persons ──
@@ -6625,6 +7049,10 @@ function buildPedigreeSVG() {
       const hDs = halfPathDs(p.shape);
       hDs.forEach((hd, i) => {
         g.push(`<path d="${hd}" fill="${svgPaint(p.halves[i] || '#ffffff')}" stroke="none" transform="translate(${x},${y})"/>`);
+      });
+    } else if (p.fillMode === 'thirds') {
+      thirdPathDs(p.shape).forEach((td, i) => {
+        g.push(`<path d="${td}" fill="${svgPaint((p.thirds && p.thirds[i]) || '#ffffff')}" stroke="none" transform="translate(${x},${y})"/>`);
       });
     } else if (p.fillMode === 'quartered') {
       const qDs = quarterPathDs(p.shape);
@@ -6676,9 +7104,9 @@ function buildPedigreeSVG() {
       g.push(svgLine(x + dl.x1, y + dl.y1, x + dl.x2, y + dl.y2, STROKE_COLOR, 1, 0.3));
     }
 
-    // Quarter dividers
-    if (p.fillMode === 'quartered') {
-      quarterDividerCoords(p.shape).forEach(dl => {
+    // Third and quarter dividers
+    if (p.fillMode === 'quartered' || p.fillMode === 'thirds') {
+      (p.fillMode === 'thirds' ? thirdDividerCoords(p.shape) : quarterDividerCoords(p.shape)).forEach(dl => {
         g.push(svgLine(x + dl.x1, y + dl.y1, x + dl.x2, y + dl.y2, STROKE_COLOR, 1, 0.3));
       });
     }
@@ -6705,22 +7133,13 @@ function buildPedigreeSVG() {
       if (p.proband) g.push(`<text x="${x + PROBAND_P.x}" y="${y + PROBAND_P.y}" text-anchor="middle" font-size="${PROBAND_P.size}" font-weight="700" fill="${STROKE_COLOR}" font-family="${FONT}">P</text>`);
     }
 
-    // Number label
+    // Number label, below the symbol where placeNumbers() put it
     const numEl = p.el.querySelector('.person-number');
-    if (numEl && numEl.textContent) {
-      const hasChildLine = childLinks.some(cl => cl.childId === p.id);
-      const twinLink = twinLinks.find(t => t.child1Id === p.id || t.child2Id === p.id);
-      let anchor = 'middle', nx = cx, ny = y - 5;
-      if (twinLink) {
-        const otherId = twinLink.child1Id === p.id ? twinLink.child2Id : twinLink.child1Id;
-        const other = persons.get(otherId);
-        const isRightTwin = other && x > parseFloat(other.el.style.left);
-        anchor = isRightTwin ? 'start' : 'end';
-        nx = isRightTwin ? x + SHAPE_SIZE + 2 : x - 2;
-      } else if (hasChildLine) {
-        anchor = 'end'; nx = x - 2;
-      }
-      g.push(`<text x="${nx}" y="${ny}" text-anchor="${anchor}" font-size="9" font-weight="700" fill="#6b7a8d" font-family="${FONT}">${esc(numEl.textContent)}</text>`);
+    if (numEl && numEl.textContent && p.numberAt) {
+      const na = p.numberAt;
+      const anchor = na.align === 'center' ? 'middle' : na.align === 'right' ? 'end' : 'start';
+      const nx = x + na.x + (na.align === 'center' ? na.w / 2 : na.align === 'right' ? na.w : 0);
+      g.push(`<text x="${nx}" y="${y + na.y + 1.5}" text-anchor="${anchor}" dominant-baseline="hanging" font-size="9" font-weight="700" fill="#6b7a8d" font-family="${FONT}">${esc(numEl.textContent)}</text>`);
     }
 
     // Text annotation
@@ -6734,22 +7153,23 @@ function buildPedigreeSVG() {
         }
       });
       const lines = p.text.split('\n');
+      const top = y + (hasSexLabel(p) ? 56 + SEX_LABEL_H : 56);
       if (isLeftPartner) {
         // Mirrors the default x + 30: ends 30px in from the shape's right edge (matches .text-left).
-        const baseY = hasArrow(p) ? y + 74 : y + 56;
+        const baseY = hasArrow(p) ? y + 74 : top;
         lines.forEach((line, i) => {
           g.push(`<text x="${x + SHAPE_SIZE - 30}" y="${baseY + i * 15}" text-anchor="end" dominant-baseline="hanging" font-size="11" fill="${STROKE_COLOR}" font-family="${FONT}">${esc(line)}</text>`);
         });
       } else {
         lines.forEach((line, i) => {
-          g.push(`<text x="${x + 30}" y="${y + 56 + i * 15}" text-anchor="start" dominant-baseline="hanging" font-size="11" fill="${STROKE_COLOR}" font-family="${FONT}">${esc(line)}</text>`);
+          g.push(`<text x="${x + 30}" y="${top + i * 15}" text-anchor="start" dominant-baseline="hanging" font-size="11" fill="${STROKE_COLOR}" font-family="${FONT}">${esc(line)}</text>`);
         });
       }
     }
 
     // Miscarriage sex label
     if (p.shape === 'miscarriage' && p.miscarriageSex && p.miscarriageSex !== 'unknown') {
-      g.push(`<text x="${cx}" y="${y + 58}" text-anchor="middle" dominant-baseline="hanging" font-size="9" font-weight="700" fill="#6b7a8d" font-family="${FONT}">${esc(p.miscarriageSex)}</text>`);
+      g.push(`<text x="${cx}" y="${y + 58}" text-anchor="middle" dominant-baseline="hanging" font-size="9" font-weight="700" fill="#6b7a8d" font-family="${FONT}">${esc(p.miscarriageSex.toUpperCase())}</text>`);
     }
 
     els.push(g.join('\n'));
@@ -6937,7 +7357,11 @@ const PSL = (() => {
   let measureCtx = null;
   function textMetrics(p) {
     const text = (p.text || '').replace(/\s+$/, '');
-    if (!text) return { w: 0, h: 0 };
+    // the pedigree number goes below the notes, or centred under a symbol without them (placeNumbers)
+    const ne = p.el && p.el.querySelector('.person-number');
+    const num = ne && ne.textContent ? { w: Math.ceil(ne.offsetWidth || 0), h: NUMBER_LINE + NUMBER_GAP } : null;
+    const sex = hasSexLabel(p) ? SEX_LABEL_H : 0;
+    if (!text) return { w: 0, h: 0, numH: num ? num.h + sex : 0 };
     const el = p.el && p.el.querySelector('.person-text');
     if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d');
     let font = '11px -apple-system, sans-serif', lh = 15;
@@ -6950,7 +7374,7 @@ const PSL = (() => {
     const lines = text.split('\n');
     let w = 0;
     lines.forEach(l => { w = Math.max(w, measureCtx.measureText(l).width); });
-    return { w: Math.min(Math.ceil(w) + 2, 260), h: Math.ceil(lines.length * lh) };
+    return { w: Math.max(Math.min(Math.ceil(w) + 2, 260), num ? num.w : 0), h: Math.ceil(lines.length * lh) + (num ? num.h : 0) + sex, numH: 0 };
   }
 
   function sexOf(shape) {
@@ -6972,6 +7396,7 @@ const PSL = (() => {
         proband: !!p.proband,
         arrow: hasArrow(p),
         textW: tm.w, textH: tm.h,
+        numH: tm.numH,         // the height of a number under a symbol without notes
         origin: null,          // couple id this person is a child of
         couples: [],           // couple ids this person is a partner in
         rank: 0, comp: -1, item: null, off: 0, x: 0, y: 0
@@ -7009,14 +7434,49 @@ const PSL = (() => {
       twinOf.get(t.child1Id).add(t.child2Id);
       twinOf.get(t.child2Id).add(t.child1Id);
     });
+    const linked = (a, b) => { const tw = twinOf.get(a); return !!tw && tw.has(b); };
     couples.forEach(c => {
-      // move each twin directly after the first of its set
-      const out = [];
+      // twins, triplets and more stay together, where the first of them is drawn, each next to one it is linked
+      // to: a chain of links (A-B, B-C) is followed from one end. A group with someone in a free position, who
+      // does not move, goes where that one is drawn, so that the others gather round them
+      const out = [], done = new Set(), waiting = new Map();
       c.children.forEach(id => {
-        if (out.includes(id)) return;
-        out.push(id);
-        const tw = twinOf.get(id);
-        if (tw) c.children.forEach(o => { if (tw.has(o) && !out.includes(o)) out.push(o); });
+        if (waiting.has(id)) { waiting.get(id).forEach(m => { done.add(m); out.push(m); }); return; }
+        if (done.has(id)) return;
+        const group = [id];
+        for (let i = 0; i < group.length; i++) c.children.forEach(o => { if (!group.includes(o) && linked(group[i], o)) group.push(o); });
+        if (group.length > 2) {
+          const drawn = c.children.filter(o => group.includes(o));
+          const ends = drawn.filter(m => drawn.filter(o => o !== m && linked(m, o)).length === 1);
+          let cur = ends.length ? ends[0] : drawn[0];
+          let seq = [cur];
+          while (seq.length < drawn.length) {
+            const next = drawn.find(o => !seq.includes(o) && linked(cur, o)) || drawn.find(o => !seq.includes(o));
+            seq.push(next);
+            cur = next;
+          }
+          // up to six children: the order that leaves the fewest links' zygosity undrawn (a ring or a star of links,
+          // say), and of those the closest to the chain followed above
+          if (seq.length <= 6) {
+            const links = twinLinks.filter(t => t.partnershipId === c.id && seq.includes(t.child1Id) && seq.includes(t.child2Id));
+            const apart = order => { let n = 0; for (let i = 0; i < order.length; i++) for (let j = i + 1; j < order.length; j++) if (seq.indexOf(order[i]) > seq.indexOf(order[j])) n++; return n; };
+            let best = seq, bestHidden = twinLinksHidden(seq, links), bestApart = 0;
+            const permute = (done, rest) => {
+              if (!rest.length) {
+                const h = twinLinksHidden(done, links);
+                if (h < bestHidden || (h === bestHidden && apart(done) < bestApart)) { best = done; bestHidden = h; bestApart = apart(done); }
+                return;
+              }
+              rest.forEach((m, i) => permute(done.concat(m), rest.slice(0, i).concat(rest.slice(i + 1))));
+            };
+            if (bestHidden) permute([], seq);
+            seq = best;
+          }
+          group.splice(0, group.length, ...seq);
+        }
+        const pin = group.length > 1 && c.children.find(o => group.includes(o) && people.get(o).pinned);
+        if (pin && pin !== id) { group.forEach(m => done.add(m)); done.delete(pin); waiting.set(pin, group); return; }
+        group.forEach(m => { done.add(m); out.push(m); });
       });
       c.children = out;
     });
@@ -8158,8 +8618,9 @@ const PSL = (() => {
     }));
     // horizontal extents of each person's notes relative to their symbol
     function textSpan(p) {
-      if (!p || !p.textW) return null;
-      return p.textLeft ? [22 - p.textW, 22] : [30, 30 + p.textW];
+      if (!p) return null;
+      if (p.textW) return p.textLeft ? [22 - p.textW, 22] : [30, 30 + p.textW];
+      return null;
     }
     function gapBetween(a, b) {
       // a: last member of the left item, b: first member of the right item
@@ -8474,6 +8935,7 @@ const PSL = (() => {
       rows[r].forEach(it => it.seq.forEach(m => {
         const p = people.get(m);
         if (p && p.textH) h = Math.max(h, p.textH + (p.arrow && p.textLeft ? 18 : 0));
+        else if (p && p.numH) h = Math.max(h, p.numH);
       }));
       const need = 56 + h + 12 + SHAPE_HALF + levels[r + 1] * cfg.busStep;
       rowY.push(rowY[r] + Math.max(cfg.rowGap, need));
@@ -8615,10 +9077,14 @@ const PSL = (() => {
       let moved = false;
       all.sort((a, b) => X(a) - X(b));
       for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) {
-        const a = all[i], b = all[j];
+        let a = all[i], b = all[j];
         if (X(b) - X(a) >= S + pad) break;
         if (Math.abs(Y(a) - Y(b)) >= S || (a.pinned && b.pinned)) continue;
+        // people pushed earlier in this pass may have passed each other: take the two in their order now, so that
+        // a push is never more than the overlap (a stale order once pushed whole rows thousands of pixels)
+        if (X(b) < X(a)) [a, b] = [b, a];
         const need = S + pad - (X(b) - X(a));
+        if (need <= 0) continue;
         if (!b.pinned) {
           // push b, and everyone to its right in its row, further right
           all.forEach(q => { if (!q.pinned && Math.abs(Y(q) - Y(b)) < S && X(q) >= X(b) && q !== a) q.x += need; });
@@ -8670,9 +9136,9 @@ function managedSetPersonPos(personData, x, y) {
 
 function runManagedPedigreeLayout(options) {
   if (persons.size === 0) {
-    updateTextWrapping();
     updateAllConnections();
-    updateNumbering();
+    writeNumbers();
+    updateTextWrapping();  // (which places the numbers, once, against the lines as they now are)
     return;
   }
   if (typeof normalizeRelatedPartnershipTypes === 'function') normalizeRelatedPartnershipTypes();
@@ -8687,9 +9153,9 @@ function runManagedPedigreeLayout(options) {
     res.laid.forEach(L => (L.R.childOffset || new Map()).forEach((v, k) => offsets.set(k, v)));
     childLinks.forEach(cl => { cl.branchYOffset = offsets.get(cl.childId + '|' + cl.partnershipId) || 0; });
   }
-  updateTextWrapping();
   updateAllConnections();
-  updateNumbering();
+  writeNumbers();
+  updateTextWrapping();  // (which places the numbers, once, against the lines as they now are)
   expandCanvasIfNeeded();
   scheduleSave();
 }

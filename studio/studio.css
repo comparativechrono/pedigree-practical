@@ -163,14 +163,14 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.92em;
 .person .delete-btn { position: absolute; top: -8px; right: -8px; width: 22px; height: 22px; border-radius: 50%; background: var(--danger); color: #fff; border: 2px solid #fff; font-size: 13px; line-height: 1; cursor: pointer; display: none; align-items: center; justify-content: center; z-index: 20; }
 .person.selected .delete-btn { display: flex; }
 @media (hover: hover) { .person:hover .delete-btn { display: flex; } }
-.person-number { position: absolute; top: -16px; left: 50%; transform: translateX(-50%); font-size: 9px; font-weight: 700; color: var(--text-muted); white-space: nowrap; pointer-events: none; letter-spacing: 0.3px; }
+/* a person's pedigree number goes below the symbol; placeNumbers() sets where */
+.person-number { position: absolute; top: 56px; left: 0; font-size: 9px; line-height: 12px; font-weight: 700; color: var(--text-muted); white-space: nowrap; pointer-events: none; letter-spacing: 0.3px; }
 .person-number.editable { pointer-events: auto; cursor: pointer; border-bottom: 1px dashed var(--text-muted); padding: 0 2px; }
 .person-number.editable:focus { outline: none; cursor: text; background: var(--accent-light); border-radius: 2px; border-bottom: 1px solid var(--accent); }
-.person-number.shifted-left { left: -2px; transform: translateX(-100%); }
-.person-number.shifted-right { left: auto; right: -2px; transform: translateX(100%); }
 .person-text { position: absolute; top: 56px; left: 30px; font-size: 11px; line-height: 1.35; color: var(--text); white-space: pre; pointer-events: none; text-align: left; }
 .person-text.wrapped { white-space: pre-wrap; }
 .person-text.text-left { left: auto; right: 30px; text-align: right; }
+.person-text.below-sex { top: 69px; }
 .person-text.text-left.proband-left { top: 74px; }
 .miscarriage-sex { position: absolute; top: 56px; left: 50%; transform: translateX(-50%); font-size: 9px; font-weight: 600; color: var(--text-muted); white-space: nowrap; pointer-events: none; text-transform: uppercase; letter-spacing: 0.5px; }
 /* the proband's or a consultand's arrow, below left of the symbol, with the proband's P beside it */
@@ -267,7 +267,7 @@ textarea.legend-input { display: block; resize: none; overflow: hidden; white-sp
 .qa-btn:active { transform: scale(0.97); }
 #personText { width: 100%; height: 58px; border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: 12.5px; line-height: 1.45; resize: vertical; background: var(--bg); outline: none; touch-action: auto; }
 #personText:focus { border-color: var(--accent); background: #fff; }
-.fill-mode-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; margin-bottom: 6px; }
+.fill-mode-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; margin-bottom: 6px; }
 .fill-mode-btn { padding: 5px 2px; border: 1px solid var(--border); border-radius: 5px; background: #fff; font-size: 11px; font-weight: 550; cursor: pointer; }
 .fill-mode-btn:hover { background: var(--bg); }
 .fill-mode-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
@@ -280,10 +280,13 @@ textarea.legend-input { display: block; resize: none; overflow: hidden; white-sp
 .color-hex-input { width: 70px; height: 23px; border: 1.5px solid var(--border); border-radius: 4px; padding: 0 4px 0 7px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; background: var(--bg); outline: none; border-left-width: 5px; touch-action: auto; }
 .color-hex-input:focus { border-color: var(--accent); }
 .grid-row { display: flex; align-items: flex-start; margin-bottom: 4px; }
-.quarter-grid, .half-grid { display: inline-grid; grid-template-columns: 1fr 1fr; gap: 2px; border: 1.5px solid var(--border); border-radius: 4px; overflow: hidden; width: 52px; height: 52px; flex: none; }
-.quarter-cell, .half-cell { cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 8px; color: var(--text-muted); font-weight: 600; position: relative; }
-.quarter-cell:hover, .half-cell:hover { filter: brightness(0.92); }
-.quarter-cell.active-quarter, .half-cell.active-half { outline: 2px solid var(--accent); outline-offset: -2px; z-index: 1; }
+.quarter-grid, .half-grid, .third-grid { display: inline-grid; grid-template-columns: 1fr 1fr; gap: 2px; border: 1.5px solid var(--border); border-radius: 4px; overflow: hidden; width: 52px; height: 52px; flex: none; }
+/* thirds: top left and top right side by side, the bottom third across the whole width */
+.third-grid { grid-template-rows: 1fr 1fr; }
+.third-cell[data-t="1"], .third-cell[data-mt="1"] { grid-column: 1 / span 2; }
+.quarter-cell, .half-cell, .third-cell { cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 8px; color: var(--text-muted); font-weight: 600; position: relative; }
+.quarter-cell:hover, .half-cell:hover, .third-cell:hover { filter: brightness(0.92); }
+.quarter-cell.active-quarter, .half-cell.active-half, .third-cell.active-third { outline: 2px solid var(--accent); outline-offset: -2px; z-index: 1; }
 .quarter-label { font-size: 11px; color: var(--text-muted); margin-left: 10px; }
 .shading-option-row { display: flex; gap: 4px; margin-bottom: 5px; }
 .shading-option-btn { flex: 1; padding: 5px 3px; border: 1px solid var(--border); border-radius: 5px; background: #fff; font-size: 11px; font-weight: 550; cursor: pointer; }
