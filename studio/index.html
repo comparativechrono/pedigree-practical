@@ -181,6 +181,7 @@
         <button class="fill-mode-btn active" type="button" data-mode="none" onclick="setFillMode('none')">None</button>
         <button class="fill-mode-btn" type="button" data-mode="solid" onclick="setFillMode('solid')">Full</button>
         <button class="fill-mode-btn" type="button" data-mode="half" onclick="setFillMode('half')">Half</button>
+        <button class="fill-mode-btn" type="button" data-mode="thirds" onclick="setFillMode('thirds')">Thirds</button>
         <button class="fill-mode-btn" type="button" data-mode="quartered" onclick="setFillMode('quartered')">Quarters</button>
         <button class="fill-mode-btn" type="button" data-mode="shading" onclick="setFillMode('shading')">Pattern</button>
       </div>
@@ -196,6 +197,17 @@
           <span class="quarter-label" id="halfLabel">Click a half, then pick a colour</span>
         </div>
         <div class="fill-colors" id="halfColorPicker"></div>
+      </div>
+      <div id="thirdsFillUI" style="display:none;">
+        <div class="grid-row">
+          <div class="third-grid" id="thirdGrid">
+            <div class="third-cell" data-t="2" onclick="selectThird(2)" style="background:#fff;">TL</div>
+            <div class="third-cell" data-t="0" onclick="selectThird(0)" style="background:#fff;">TR</div>
+            <div class="third-cell" data-t="1" onclick="selectThird(1)" style="background:#fff;">B</div>
+          </div>
+          <span class="quarter-label" id="thirdLabel">Click a third, then pick a colour</span>
+        </div>
+        <div class="fill-colors" id="thirdColorPicker"></div>
       </div>
       <div id="quarteredFillUI" style="display:none;">
         <div class="grid-row">
@@ -301,6 +313,7 @@
         <button class="fill-mode-btn" type="button" data-mmode="none" onclick="multiSetFillMode('none')">None</button>
         <button class="fill-mode-btn" type="button" data-mmode="solid" onclick="multiSetFillMode('solid')">Full</button>
         <button class="fill-mode-btn" type="button" data-mmode="half" onclick="multiSetFillMode('half')">Half</button>
+        <button class="fill-mode-btn" type="button" data-mmode="thirds" onclick="multiSetFillMode('thirds')">Thirds</button>
         <button class="fill-mode-btn" type="button" data-mmode="quartered" onclick="multiSetFillMode('quartered')">Quarters</button>
         <button class="fill-mode-btn" type="button" data-mmode="shading" onclick="multiSetFillMode('shading')">Pattern</button>
       </div>
@@ -314,6 +327,17 @@
           <span class="quarter-label" id="multiHalfLabel">Click a half, then pick a colour</span>
         </div>
         <div class="fill-colors" id="multiHalfColorPicker"></div>
+      </div>
+      <div id="multiThirdsFillUI" style="display:none;">
+        <div class="grid-row">
+          <div class="third-grid" id="multiThirdGrid">
+            <div class="third-cell" data-mt="2" onclick="multiSelectThird(2)" style="background:#fff;">TL</div>
+            <div class="third-cell" data-mt="0" onclick="multiSelectThird(0)" style="background:#fff;">TR</div>
+            <div class="third-cell" data-mt="1" onclick="multiSelectThird(1)" style="background:#fff;">B</div>
+          </div>
+          <span class="quarter-label" id="multiThirdLabel">Click a third, then pick a colour</span>
+        </div>
+        <div class="fill-colors" id="multiThirdColorPicker"></div>
       </div>
       <div id="multiQuarteredFillUI" style="display:none;">
         <div class="grid-row">
